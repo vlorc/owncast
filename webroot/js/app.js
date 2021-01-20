@@ -171,7 +171,7 @@ export default class App extends Component {
   }
 
   setConfigData(data = {}) {
-    const { title, summary } = data;
+    const { title, streamTitle, summary } = data;
     window.document.title = title;
 
     this.setState({
@@ -386,6 +386,7 @@ export default class App extends Component {
       summary,
       tags = [],
       title,
+      streamTitle,
       extraPageContent,
     } = configData;
 
@@ -508,6 +509,9 @@ export default class App extends Component {
                   >${streamerName}</span
                 >
               </h2>
+              <h3 class="font-semibold text-3xl">
+                ${streamTitle}
+              </h3>
               <${SocialIconsList} handles=${socialHandles} />
               <div
                 id="stream-summary"
