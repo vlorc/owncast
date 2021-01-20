@@ -11,8 +11,8 @@ import (
 
 	"github.com/owncast/owncast/config"
 	"github.com/owncast/owncast/core/data"
-	"github.com/owncast/owncast/core/ffmpeg"
 	"github.com/owncast/owncast/core/rtmp"
+	"github.com/owncast/owncast/core/transcoder"
 	"github.com/owncast/owncast/models"
 	"github.com/owncast/owncast/utils"
 
@@ -53,7 +53,7 @@ func setStreamAsConnected() {
 	}
 
 	go func() {
-		_transcoder = ffmpeg.NewTranscoder()
+		_transcoder = transcoder.NewTranscoder()
 		_transcoder.TranscoderCompleted = func(error) {
 			SetStreamAsDisconnected()
 			_transcoder = nil
@@ -62,7 +62,7 @@ func setStreamAsConnected() {
 		_transcoder.Start()
 	}()
 
-	ffmpeg.StartThumbnailGenerator(segmentPath, data.FindHighestVideoQualityIndex(_currentBroadcast.OutputSettings))
+	transcoder.StartThumbnailGenerator(segmentPath, data.FindHighestVideoQualityIndex(_currentBroadcast.OutputSettings))
 }
 
 // SetStreamAsDisconnected sets the stream as disconnected.
@@ -74,7 +74,7 @@ func SetStreamAsDisconnected() {
 	offlineFilename := "offline.ts"
 	offlineFilePath := "static/" + offlineFilename
 
-	ffmpeg.StopThumbnailGenerator()
+	transcoder.StopThumbnailGenerator()
 	rtmp.Disconnect()
 
 	if _yp != nil {
@@ -179,7 +179,7 @@ func startOnlineCleanupTimer() {
 	_onlineCleanupTicker = time.NewTicker(1 * time.Minute)
 	go func() {
 		for range _onlineCleanupTicker.C {
-			ffmpeg.CleanupOldContent(config.PrivateHLSStoragePath)
+			transcoder.CleanupOldContent(config.PrivateHLSStoragePath)
 		}
 	}()
 }
