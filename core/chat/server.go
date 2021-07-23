@@ -2,6 +2,7 @@ package chat
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -62,6 +63,7 @@ func (s *ChatServer) Run() {
 			}
 
 		case message := <-s.inbound:
+			fmt.Println("inbound...")
 			s.eventReceived(message)
 		}
 	}
@@ -193,21 +195,31 @@ func (s *ChatServer) Broadcast(payload events.EventPayload) error {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	go func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
 
-	for _, client := range s.clients {
-		if client == nil {
-			continue
-		}
+		defer func() {
+			if a := recover(); a != nil {
+				fmt.Println("RECOVER", a)
+			}
+		}()
 
-		select {
-		case client.send <- data:
-		default:
-			client.close()
-			delete(s.clients, client.id)
+		for _, client := range s.clients {
+			if client == nil {
+				continue
+			}
+
+			if client.send != nil {
+				select {
+				case client.send <- data:
+				default:
+					client.close()
+					delete(s.clients, client.id)
+				}
+			}
 		}
-	}
+	}()
 
 	return nil
 }
@@ -219,7 +231,9 @@ func (s *ChatServer) Send(payload events.EventPayload, client *ChatClient) {
 		return
 	}
 
-	client.send <- data
+	if client.send != nil {
+		client.send <- data
+	}
 }
 
 // DisconnectUser will forcefully disconnect all clients belonging to a user by ID.
