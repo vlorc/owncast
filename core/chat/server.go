@@ -63,7 +63,6 @@ func (s *ChatServer) Run() {
 			}
 
 		case message := <-s.inbound:
-			fmt.Println("inbound...")
 			s.eventReceived(message)
 		}
 	}
