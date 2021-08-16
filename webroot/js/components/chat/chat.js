@@ -10,7 +10,7 @@ import {
   debounce,
   setLocalStorage,
 } from '../../utils/helpers.js';
-import { extraUserNamesFromMessageHistory } from '../../utils/chat.js';
+import { checkIsModerator, extraUserNamesFromMessageHistory } from '../../utils/chat.js';
 import {
   URL_CHAT_HISTORY,
   MESSAGE_JUMPTOBOTTOM_BUFFER,
@@ -25,6 +25,7 @@ export default class Chat extends Component {
       messages: [],
       newMessagesReceived: false,
       webSocketConnected: true,
+      isModerator: false,
     };
 
     this.scrollableMessagesContainer = createRef();
@@ -189,6 +190,16 @@ export default class Chat extends Component {
       (item) => item.id === messageId
     );
 
+    // check moderator status
+    if (messageType === SOCKET_MESSAGE_TYPES.CONNECTED_USER_INFO) {
+      const modStatusUpdate = checkIsModerator(message);
+      if (modStatusUpdate !== this.state.isModerator) {
+        this.setState({
+          isModerator: modStatusUpdate,
+        });
+      }
+    }
+
     // If the message already exists and this is an update event
     // then update it.
     if (messageType === 'VISIBILITY-UPDATE') {
@@ -236,7 +247,7 @@ export default class Chat extends Component {
     }
 
     // if window is blurred and we get a new message, add 1 to title
-    if (!readonly && messageType === 'CHAT' && this.windowBlurred) {
+    if (!readonly && messageType === SOCKET_MESSAGE_TYPES.CHAT && this.windowBlurred) {
       this.numMessagesSinceBlur += 1;
     }
   }
