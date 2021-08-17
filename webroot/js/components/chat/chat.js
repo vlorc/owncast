@@ -360,7 +360,7 @@ export default class Chat extends Component {
 
   render(props, state) {
     const { username, readonly, chatInputEnabled, inputMaxBytes } = props;
-    const { messages, chatUserNames, webSocketConnected } = state;
+    const { messages, chatUserNames, webSocketConnected, isModerator } = state;
 
     const messageList = messages
       .filter((message) => message.visible !== false)
@@ -370,6 +370,7 @@ export default class Chat extends Component {
             message=${message}
             username=${username}
             key=${message.id}
+            isModerator=${isModerator}
           />`
       );
 
