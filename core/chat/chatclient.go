@@ -63,11 +63,14 @@ var (
 )
 
 func (c *ChatClient) sendConnectedClientInfo() {
-	payload := events.EventPayload{
-		"type": events.ConnectedUserInfo,
-		"user": c.User,
+	payload := events.ConnecteClientInfo{
+		Event: events.Event{
+			Type: events.ConnectedUserInfo,
+		},
+		User: c.User,
 	}
 
+	payload.SetDefaults()
 	c.sendPayload(payload)
 }
 
@@ -179,7 +182,7 @@ func (c *ChatClient) passesRateLimit() bool {
 	return true
 }
 
-func (c *ChatClient) sendPayload(payload events.EventPayload) {
+func (c *ChatClient) sendPayload(payload interface{}) {
 	var data []byte
 	data, err := json.Marshal(payload)
 	if err != nil {
