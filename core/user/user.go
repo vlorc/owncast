@@ -16,6 +16,8 @@ import (
 
 var _datastore *data.Datastore
 
+const moderatorScopeKey = "MODERATOR"
+
 type User struct {
 	Id            string     `json:"id"`
 	AccessToken   string     `json:"-"`
@@ -30,6 +32,11 @@ type User struct {
 
 func (u *User) IsEnabled() bool {
 	return u.DisabledAt == nil
+}
+
+func (u *User) IsModerator() bool {
+	_, hasModerationScope := utils.FindInSlice(u.Scopes, moderatorScopeKey)
+	return hasModerationScope
 }
 
 func SetupUsers() {
@@ -125,6 +132,7 @@ func create(user *User) error {
 	return tx.Commit()
 }
 
+// SetEnabled will set the enabled status of a single user by ID.
 func SetEnabled(userID string, enabled bool) error {
 	_datastore.DbLock.Lock()
 	defer _datastore.DbLock.Unlock()
@@ -161,10 +169,76 @@ func GetUserByToken(token string) *User {
 	_datastore.DbLock.Lock()
 	defer _datastore.DbLock.Unlock()
 
-	query := "SELECT id, display_name, display_color, created_at, disabled_at, previous_names, namechanged_at FROM users WHERE access_token = ?"
+	query := "SELECT id, display_name, display_color, created_at, disabled_at, previous_names, namechanged_at, scopes FROM users WHERE access_token = ?"
 	row := _datastore.DB.QueryRow(query, token)
 
 	return getUserFromRow(row)
+}
+
+// SetModerator will add or remove moderator status for a single user by ID.
+func SetModerator(userID string, isModerator bool) error {
+	if isModerator {
+		return addScopeToUser(userID, moderatorScopeKey)
+	} else {
+		return removeScopeFromUser(userID, moderatorScopeKey)
+	}
+}
+
+func addScopeToUser(userID string, scope string) error {
+	u := GetUserById(userID)
+	scopesString := u.Scopes
+	scopes := utils.StringSliceToMap(scopesString)
+	scopes[scope] = true
+
+	scopesSlice := utils.StringMapKeys(scopes)
+
+	return setScopesOnUser(userID, scopesSlice)
+}
+
+func removeScopeFromUser(userID string, scope string) error {
+	u := GetUserById(userID)
+	scopesString := u.Scopes
+	scopes := utils.StringSliceToMap(scopesString)
+	delete(scopes, scope)
+
+	scopesSlice := utils.StringMapKeys(scopes)
+
+	return setScopesOnUser(userID, scopesSlice)
+
+}
+
+func setScopesOnUser(userID string, scopes []string) error {
+	_datastore.DbLock.Lock()
+	defer _datastore.DbLock.Unlock()
+
+	tx, err := _datastore.DB.Begin()
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback() //nolint
+
+	scopesSliceString := strings.TrimSpace(strings.Join(scopes, ","))
+	stmt, err := tx.Prepare("UPDATE users SET scopes=? WHERE id IS ?")
+
+	if err != nil {
+		return err
+	}
+
+	defer stmt.Close()
+
+	var val *string
+	if scopesSliceString == "" {
+		val = nil
+	} else {
+		val = &scopesSliceString
+	}
+
+	if _, err := stmt.Exec(val, userID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 // GetUserById will return a user by a user ID.
@@ -172,7 +246,7 @@ func GetUserById(id string) *User {
 	_datastore.DbLock.Lock()
 	defer _datastore.DbLock.Unlock()
 
-	query := "SELECT id, display_name, display_color, created_at, disabled_at, previous_names, namechanged_at FROM users WHERE id = ?"
+	query := "SELECT id, display_name, display_color, created_at, disabled_at, previous_names, namechanged_at, scopes FROM users WHERE id = ?"
 	row := _datastore.DB.QueryRow(query, id)
 	if row == nil {
 		log.Errorln(row)
@@ -183,7 +257,7 @@ func GetUserById(id string) *User {
 
 // GetDisabledUsers will return back all the currently disabled users that are not API users.
 func GetDisabledUsers() []*User {
-	query := "SELECT id, display_name, display_color, created_at, disabled_at, previous_names, namechanged_at FROM users WHERE disabled_at IS NOT NULL AND type IS NOT 'API'"
+	query := "SELECT id, display_name, scopes, display_color, created_at, disabled_at, previous_names, namechanged_at FROM users WHERE disabled_at IS NOT NULL AND type IS NOT 'API'"
 
 	rows, err := _datastore.DB.Query(query)
 	if err != nil {
@@ -201,6 +275,34 @@ func GetDisabledUsers() []*User {
 	return users
 }
 
+// GetModeratorUsers will return a list of users with moderator access.
+func GetModeratorUsers() []*User {
+	var query = `SELECT id, display_name, scopes, display_color, created_at, disabled_at, previous_names, namechanged_at FROM (
+		WITH RECURSIVE split(id, display_name, scopes, display_color, created_at, disabled_at, previous_names, namechanged_at, scope, rest) AS (
+		  SELECT id, display_name, scopes, display_color, created_at, disabled_at, previous_names, namechanged_at, '', scopes || ',' FROM users
+		   UNION ALL
+		  SELECT id, display_name, scopes, display_color, created_at, disabled_at, previous_names, namechanged_at,
+				 substr(rest, 0, instr(rest, ',')),
+				 substr(rest, instr(rest, ',')+1)
+			FROM split
+		   WHERE rest <> '')
+		SELECT id, display_name, scopes, display_color, created_at, disabled_at, previous_names, namechanged_at, scope 
+		  FROM split 
+		 WHERE scope <> ''
+		 ORDER BY created_at
+	  ) AS token WHERE token.scope = ?`
+
+	rows, err := _datastore.DB.Query(query, moderatorScopeKey)
+	if err != nil {
+		log.Errorln(err)
+		return nil
+	}
+	defer rows.Close()
+
+	users := getUsersFromRows(rows)
+
+	return users
+}
 func getUsersFromRows(rows *sql.Rows) []*User {
 	users := make([]*User, 0)
 
@@ -212,10 +314,16 @@ func getUsersFromRows(rows *sql.Rows) []*User {
 		var disabledAt *time.Time
 		var previousUsernames string
 		var userNameChangedAt *time.Time
+		var scopesString *string
 
-		if err := rows.Scan(&id, &displayName, &displayColor, &createdAt, &disabledAt, &previousUsernames, &userNameChangedAt); err != nil {
+		if err := rows.Scan(&id, &displayName, &scopesString, &displayColor, &createdAt, &disabledAt, &previousUsernames, &userNameChangedAt); err != nil {
 			log.Errorln("error creating collection of users from results", err)
 			return nil
+		}
+
+		var scopes []string
+		if scopesString != nil {
+			scopes = strings.Split(*scopesString, ",")
 		}
 
 		user := &User{
@@ -226,6 +334,7 @@ func getUsersFromRows(rows *sql.Rows) []*User {
 			DisabledAt:    disabledAt,
 			PreviousNames: strings.Split(previousUsernames, ","),
 			NameChangedAt: userNameChangedAt,
+			Scopes:        scopes,
 		}
 		users = append(users, user)
 	}
@@ -245,9 +354,15 @@ func getUserFromRow(row *sql.Row) *User {
 	var disabledAt *time.Time
 	var previousUsernames string
 	var userNameChangedAt *time.Time
+	var scopesString *string
 
-	if err := row.Scan(&id, &displayName, &displayColor, &createdAt, &disabledAt, &previousUsernames, &userNameChangedAt); err != nil {
+	if err := row.Scan(&id, &displayName, &displayColor, &createdAt, &disabledAt, &previousUsernames, &userNameChangedAt, &scopesString); err != nil {
 		return nil
+	}
+
+	var scopes []string
+	if scopesString != nil {
+		scopes = strings.Split(*scopesString, ",")
 	}
 
 	return &User{
@@ -258,5 +373,6 @@ func getUserFromRow(row *sql.Row) *User {
 		DisabledAt:    disabledAt,
 		PreviousNames: strings.Split(previousUsernames, ","),
 		NameChangedAt: userNameChangedAt,
+		Scopes:        scopes,
 	}
 }
