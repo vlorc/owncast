@@ -34,6 +34,7 @@ type S3Storage struct {
 	s3AccessKey       string
 	s3Secret          string
 	s3ACL             string
+	s3ForcePathStyle  bool
 
 	// If we try to upload a playlist but it is not yet on disk
 	// then keep a reference to it here.
@@ -67,6 +68,7 @@ func (s *S3Storage) Setup() error {
 	s.s3AccessKey = s3Config.AccessKey
 	s.s3Secret = s3Config.Secret
 	s.s3ACL = s3Config.ACL
+	s.s3ForcePathStyle = s3Config.ForcePathStyle
 
 	s.sess = s.connectAWS()
 
@@ -184,9 +186,10 @@ func (s *S3Storage) connectAWS() *session.Session {
 
 	sess, err := session.NewSession(
 		&aws.Config{
-			Region:      aws.String(s.s3Region),
-			Credentials: creds,
-			Endpoint:    aws.String(s.s3Endpoint),
+			Region:           aws.String(s.s3Region),
+			Credentials:      creds,
+			Endpoint:         aws.String(s.s3Endpoint),
+			S3ForcePathStyle: aws.Bool(s.s3ForcePathStyle),
 		},
 	)
 
@@ -200,7 +203,7 @@ func (s *S3Storage) connectAWS() *session.Session {
 func (s *S3Storage) rewriteRemotePlaylist(filePath string) error {
 	f, err := os.Open(filePath) // nolint
 	if err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 
 	p := m3u8.NewMasterPlaylist()

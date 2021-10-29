@@ -8,17 +8,17 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/grafov/m3u8 v0.11.1
 	github.com/lestrrat-go/file-rotatelogs v2.4.0+incompatible
-	github.com/mattn/go-sqlite3 v1.14.8
-	github.com/microcosm-cc/bluemonday v1.0.15
+	github.com/mattn/go-sqlite3 v1.14.9
+	github.com/microcosm-cc/bluemonday v1.0.16
 	github.com/mssola/user_agent v0.5.3
 	github.com/nareix/joy5 v0.0.0-20200712071056-a55089207c88
 	github.com/oschwald/geoip2-golang v1.5.0
 	github.com/rifflock/lfshook v0.0.0-20180920164130-b9218ef580f5
-	github.com/schollz/sqlite3dump v1.3.0
+	github.com/schollz/sqlite3dump v1.3.1
 	github.com/shirou/gopsutil v3.21.9+incompatible
 	github.com/sirupsen/logrus v1.8.1
 	github.com/teris-io/shortid v0.0.0-20171029131806-771a37caa5cf
-	github.com/yuin/goldmark v1.4.1
+	github.com/yuin/goldmark v1.4.2
 	golang.org/x/mod v0.5.1
 	golang.org/x/time v0.0.0-20201208040808-7e3f01d25324
 	mvdan.cc/xurls v1.1.0
