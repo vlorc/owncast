@@ -15,6 +15,7 @@ import {
   MESSAGE_JUMPTOBOTTOM_BUFFER,
 } from '../../utils/constants.js';
 
+const renderableChatStyleMessages = ['CHAT', 'SYSTEM', 'USER_JOINED'];
 export default class Chat extends Component {
   constructor(props, context) {
     super(props, context);
@@ -217,11 +218,14 @@ export default class Chat extends Component {
         }
       });
       this.forceRender = true;
-    } else if (existingIndex === -1 && messageVisible) {
+    } else if (
+      renderableChatStyleMessages.includes(messageType) &&
+      existingIndex === -1 &&
+      messageVisible
+    ) {
       // insert message at timestamp
       const convertedMessage = {
         ...message,
-        type: 'CHAT',
       };
       const insertAtIndex = curMessages.findIndex((item, index) => {
         const time = item.timestamp || messageTimestamp;
@@ -243,7 +247,10 @@ export default class Chat extends Component {
       this.setState({
         messages: updatedMessageList,
       });
-    } else if (existingIndex === -1) {
+    } else if (
+      renderableChatStyleMessages.includes(messageType) &&
+      existingIndex === -1
+    ) {
       // else if message doesn't exist, add it and extra username
       const newState = {
         messages: [...curMessages, message],
