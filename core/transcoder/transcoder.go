@@ -35,6 +35,7 @@ type Transcoder struct {
 
 	currentStreamOutputSettings []models.StreamOutputVariant
 	currentLatencyLevel         models.LatencyLevel
+	isEvent                     bool
 
 	TranscoderCompleted func(error)
 }
@@ -74,12 +75,12 @@ func (v *HLSVariant) getAllocatedVideoBitrate() int {
 
 // getMaxVideoBitrate returns the maximum video bitrate we allow the encoder to support.
 func (v *HLSVariant) getMaxVideoBitrate() int {
-	return int(float64(v.getAllocatedVideoBitrate()) + float64(v.getAllocatedVideoBitrate())*0.07)
+	return int(float64(v.getAllocatedVideoBitrate()) * 1.08)
 }
 
 // getBufferSize returns how often it checks the bitrate of encoded segments to see if it's too high/low.
 func (v *HLSVariant) getBufferSize() int {
-	return int(float64(v.getAllocatedVideoBitrate()) * 0.5)
+	return int(float64(v.getMaxVideoBitrate()))
 }
 
 // getString returns a WxH formatted getString for scaling video output.
@@ -153,6 +154,16 @@ func (t *Transcoder) Start() {
 	}
 }
 
+// SetLatencyLevel will set the latency level for the instance of the transcoder.
+func (t *Transcoder) SetLatencyLevel(level models.LatencyLevel) {
+	t.currentLatencyLevel = level
+}
+
+// SetIsEvent will allow you to set a stream as an "event".
+func (t *Transcoder) SetIsEvent(isEvent bool) {
+	t.isEvent = isEvent
+}
+
 func (t *Transcoder) getString() string {
 	port := t.internalListenerPort
 	localListenerAddress := "http://127.0.0.1:" + port
@@ -168,6 +179,14 @@ func (t *Transcoder) getString() string {
 
 	if t.segmentIdentifier == "" {
 		t.segmentIdentifier = shortid.MustGenerate()
+	}
+
+	hlsEventString := ""
+	if t.isEvent {
+		hlsEventString = "-hls_playlist_type event"
+	} else {
+		// Don't let the transcoder close the playlist. We do it manually.
+		hlsOptionFlags = append(hlsOptionFlags, "omit_endlist")
 	}
 
 	hlsOptionsString := ""
@@ -191,6 +210,7 @@ func (t *Transcoder) getString() string {
 		"-hls_time", strconv.Itoa(t.currentLatencyLevel.SecondsPerSegment), // Length of each segment
 		"-hls_list_size", strconv.Itoa(t.currentLatencyLevel.SegmentCount), // Max # in variant playlist
 		hlsOptionsString,
+		hlsEventString,
 		"-segment_format_options", "mpegts_flags=mpegts_copyts=1",
 
 		// Video settings
@@ -409,11 +429,6 @@ func (t *Transcoder) SetStdin(pipe *io.PipeReader) {
 // SetOutputPath sets the root directory that should include playlists and video segments.
 func (t *Transcoder) SetOutputPath(output string) {
 	t.segmentOutputPath = output
-}
-
-// SetAppendToStream enables appending to the HLS stream instead of overwriting.
-func (t *Transcoder) SetAppendToStream(append bool) {
-	t.appendToStream = append
 }
 
 // SetIdentifier enables appending a unique identifier to segment file name.

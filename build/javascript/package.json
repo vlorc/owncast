@@ -4,19 +4,19 @@
   "description": "Javascript dependencies for Owncast web app",
   "main": "index.js",
   "dependencies": {
-    "@joeattardi/emoji-button": "^4.6.0",
+    "@joeattardi/emoji-button": "^4.6.2",
     "@videojs/themes": "^1.0.1",
     "htm": "^3.1.0",
     "mark.js": "^8.11.1",
-    "micromodal": "^0.4.6",
-    "preact": "10.5.15",
+    "micromodal": "^0.4.10",
+    "preact": "10.6.4",
     "tailwindcss": "^1.9.6",
     "video.js": "7.17.0"
   },
   "devDependencies": {
-    "cssnano": "^5.0.11",
-    "postcss": "^8.3.11",
-    "postcss-cli": "^9.0.2"
+    "cssnano": "^5.0.14",
+    "postcss": "^8.4.5",
+    "postcss-cli": "^9.1.0"
   },
   "snowpack": {
     "install": [

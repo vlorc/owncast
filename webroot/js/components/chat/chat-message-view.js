@@ -7,7 +7,7 @@ import {
   messageBubbleColorForHue,
   textColorForHue,
 } from '../../utils/user-colors.js';
-import { convertToText } from '../../utils/chat.js';
+import { convertToText, checkIsModerator } from '../../utils/chat.js';
 import { SOCKET_MESSAGE_TYPES } from '../../utils/websocket.js';
 import { getDiffInDaysFromNow } from '../../utils/helpers.js';
 import ModeratorActions from './moderator-actions.js';
@@ -25,7 +25,10 @@ export default class ChatMessageView extends Component {
     const { formattedMessage } = this.state;
     const { formattedMessage: nextFormattedMessage } = nextState;
 
-    return formattedMessage !== nextFormattedMessage;
+    return (
+      formattedMessage !== nextFormattedMessage ||
+      (!this.props.isModerator && nextProps.isModerator)
+    );
   }
 
   async componentDidMount() {
@@ -42,12 +45,8 @@ export default class ChatMessageView extends Component {
   render() {
     const { message, isModerator, accessToken } = this.props;
     const { user, timestamp } = message;
-    const {
-      displayName,
-      displayColor,
-      createdAt,
-      isModerator: isAuthorModerator,
-    } = user;
+    const { displayName, displayColor, createdAt } = user;
+    const isAuthorModerator = checkIsModerator(message);
 
     const isMessageModeratable =
       isModerator && message.type === SOCKET_MESSAGE_TYPES.CHAT;
@@ -75,6 +74,14 @@ export default class ChatMessageView extends Component {
           isMessageModeratable ? 'moderatable' : ''
         }`;
 
+    const messageAuthorFlair = isAuthorModerator
+      ? html`<img
+          class="flair"
+          title="Moderator"
+          src="/img/moderator-nobackground.svg"
+        />`
+      : null;
+
     return html`
       <div
         style=${backgroundStyle}
@@ -84,12 +91,10 @@ export default class ChatMessageView extends Component {
         <div class="message-content break-words w-full">
           <div
             style=${authorTextColor}
-            class="message-author font-bold${isAuthorModerator
-              ? ' moderator-flag'
-              : ''}"
+            class="message-author font-bold"
             title=${userMetadata}
           >
-            ${displayName}
+            ${messageAuthorFlair} ${displayName}
           </div>
           ${isMessageModeratable &&
           html`<${ModeratorActions}
