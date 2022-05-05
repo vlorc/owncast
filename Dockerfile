@@ -3,7 +3,7 @@ FROM golang:alpine AS build
 RUN mkdir /build
 ADD . /build
 WORKDIR /build
-RUN apk update && apk add --no-cache gcc build-base linux-headers
+RUN apk update && apk add --no-cache git gcc build-base linux-headers
 
 ARG VERSION=dev
 ENV VERSION=${VERSION}
@@ -23,5 +23,5 @@ WORKDIR /app
 COPY --from=build /build/owncast /app/owncast
 COPY --from=build /build/webroot /app/webroot
 RUN mkdir /app/data
-CMD ["/app/owncast"]
+ENTRYPOINT ["/app/owncast"]
 EXPOSE 8080 1935

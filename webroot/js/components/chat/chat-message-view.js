@@ -45,7 +45,12 @@ export default class ChatMessageView extends Component {
   render() {
     const { message, isModerator, accessToken } = this.props;
     const { user, timestamp } = message;
-    const { displayName, displayColor, createdAt } = user;
+
+    if (!user) {
+      return null;
+    }
+
+    const { displayName, displayColor, createdAt, isBot, authenticated } = user;
     const isAuthorModerator = checkIsModerator(message);
 
     const isMessageModeratable =
@@ -74,11 +79,28 @@ export default class ChatMessageView extends Component {
           isMessageModeratable ? 'moderatable' : ''
         }`;
 
-    const messageAuthorFlair = isAuthorModerator
+    const isModeratorFlair = isAuthorModerator
       ? html`<img
           class="flair"
           title="Moderator"
           src="/img/moderator-nobackground.svg"
+        />`
+      : null;
+
+    const isBotFlair = isBot
+      ? html`<img
+          title="Bot"
+          class="inline-block mr-1 w-4 h-4 relative"
+          style=${{ bottom: '1px' }}
+          src="/img/bot.svg"
+        />`
+      : null;
+
+    const authorAuthenticatedFlair = authenticated
+      ? html`<img
+          class="flair"
+          title="Authenticated"
+          src="/img/authenticated.svg"
         />`
       : null;
 
@@ -94,7 +116,8 @@ export default class ChatMessageView extends Component {
             class="message-author font-bold"
             title=${userMetadata}
           >
-            ${messageAuthorFlair} ${displayName}
+            ${isBotFlair} ${authorAuthenticatedFlair} ${isModeratorFlair}
+            ${displayName}
           </div>
           ${isMessageModeratable &&
           html`<${ModeratorActions}

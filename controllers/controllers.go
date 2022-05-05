@@ -16,9 +16,6 @@ func InternalErrorHandler(w http.ResponseWriter, err error) {
 		return
 	}
 
-	log.Errorln(err)
-
-	w.WriteHeader(http.StatusInternalServerError)
 	if err := json.NewEncoder(w).Encode(j{"error": err.Error()}); err != nil {
 		InternalErrorHandler(w, err)
 	}
@@ -66,4 +63,12 @@ func WriteResponse(w http.ResponseWriter, response interface{}) {
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		InternalErrorHandler(w, err)
 	}
+}
+
+// WriteString will return a basic string and a status code to the client.
+func WriteString(w http.ResponseWriter, text string, status int) error {
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(status)
+	_, err := w.Write([]byte(text))
+	return err
 }

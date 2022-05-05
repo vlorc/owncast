@@ -1,11 +1,13 @@
 package core
 
 import (
+	"context"
 	"io"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/owncast/owncast/activitypub"
 	"github.com/owncast/owncast/config"
 	"github.com/owncast/owncast/core/chat"
 	"github.com/owncast/owncast/core/data"
@@ -13,6 +15,7 @@ import (
 	"github.com/owncast/owncast/core/transcoder"
 	"github.com/owncast/owncast/core/webhooks"
 	"github.com/owncast/owncast/models"
+	"github.com/owncast/owncast/notifications"
 	"github.com/owncast/owncast/utils"
 )
 
@@ -23,6 +26,10 @@ var _offlineCleanupTimer *time.Timer
 var _onlineCleanupTicker *time.Ticker
 
 var _currentBroadcast *models.CurrentBroadcast
+
+var _onlineTimerCancelFunc context.CancelFunc
+
+var _lastNotified *time.Time
 
 // setStreamAsConnected sets the stream as connected.
 func setStreamAsConnected(rtmpOut *io.PipeReader) {
@@ -66,6 +73,9 @@ func setStreamAsConnected(rtmpOut *io.PipeReader) {
 
 	_ = chat.SendSystemAction("Stay tuned, the stream is **starting**!", true)
 	chat.SendAllWelcomeMessage()
+
+	// Send delayed notification messages.
+	_onlineTimerCancelFunc = startLiveStreamNotificationsTimer()
 }
 
 // SetStreamAsDisconnected sets the stream as disconnected.
@@ -73,6 +83,10 @@ func SetStreamAsDisconnected() {
 	_ = chat.SendSystemAction("The stream is ending.", true)
 
 	now := utils.NullTime{Time: time.Now(), Valid: true}
+	if _onlineTimerCancelFunc != nil {
+		_onlineTimerCancelFunc()
+	}
+
 	_stats.StreamConnected = false
 	_stats.LastDisconnectTime = &now
 	_stats.LastConnectTime = nil
@@ -146,4 +160,39 @@ func stopOnlineCleanupTimer() {
 	if _onlineCleanupTicker != nil {
 		_onlineCleanupTicker.Stop()
 	}
+}
+
+func startLiveStreamNotificationsTimer() context.CancelFunc {
+	// Send delayed notification messages.
+	c, cancelFunc := context.WithCancel(context.Background())
+	_onlineTimerCancelFunc = cancelFunc
+	go func(c context.Context) {
+		select {
+		case <-time.After(time.Minute * 2.0):
+			if _lastNotified != nil && time.Since(*_lastNotified) < 10*time.Minute {
+				return
+			}
+
+			// Send Fediverse message.
+			if data.GetFederationEnabled() {
+				log.Traceln("Sending Federated Go Live message.")
+				if err := activitypub.SendLive(); err != nil {
+					log.Errorln(err)
+				}
+			}
+
+			// Send notification to those who have registered for them.
+			if notifier, err := notifications.New(data.GetDatastore()); err != nil {
+				log.Errorln(err)
+			} else {
+				notifier.Notify()
+			}
+
+			now := time.Now()
+			_lastNotified = &now
+		case <-c.Done():
+		}
+	}(c)
+
+	return cancelFunc
 }

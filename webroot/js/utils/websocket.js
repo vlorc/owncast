@@ -1,4 +1,3 @@
-import { URL_WEBSOCKET } from './constants.js';
 /**
  * These are the types of messages that we can handle with the websocket.
  * Mostly used by `websocket.js` but if other components need to handle
@@ -12,6 +11,9 @@ export const SOCKET_MESSAGE_TYPES = {
   SYSTEM: 'SYSTEM',
   USER_JOINED: 'USER_JOINED',
   CHAT_ACTION: 'CHAT_ACTION',
+  FEDIVERSE_ENGAGEMENT_FOLLOW: 'FEDIVERSE_ENGAGEMENT_FOLLOW',
+  FEDIVERSE_ENGAGEMENT_LIKE: 'FEDIVERSE_ENGAGEMENT_LIKE',
+  FEDIVERSE_ENGAGEMENT_REPOST: 'FEDIVERSE_ENGAGEMENT_REPOST',
   CONNECTED_USER_INFO: 'CONNECTED_USER_INFO',
   ERROR_USER_DISABLED: 'ERROR_USER_DISABLED',
   ERROR_NEEDS_REGISTRATION: 'ERROR_NEEDS_REGISTRATION',
@@ -27,8 +29,9 @@ export const CALLBACKS = {
 const TIMER_WEBSOCKET_RECONNECT = 5000; // ms
 
 export default class Websocket {
-  constructor(accessToken) {
+  constructor(accessToken, path) {
     this.websocket = null;
+    this.path = path;
     this.websocketReconnectTimer = null;
     this.accessToken = accessToken;
 
@@ -47,7 +50,7 @@ export default class Websocket {
   }
 
   createAndConnect() {
-    const url = new URL(URL_WEBSOCKET);
+    const url = new URL(this.path);
     url.searchParams.append('accessToken', this.accessToken);
 
     const ws = new WebSocket(url.toString());

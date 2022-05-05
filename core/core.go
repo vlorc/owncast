@@ -7,6 +7,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/owncast/owncast/auth"
 	"github.com/owncast/owncast/config"
 	"github.com/owncast/owncast/core/chat"
 	"github.com/owncast/owncast/core/data"
@@ -15,6 +16,7 @@ import (
 	"github.com/owncast/owncast/core/user"
 	"github.com/owncast/owncast/core/webhooks"
 	"github.com/owncast/owncast/models"
+	"github.com/owncast/owncast/notifications"
 	"github.com/owncast/owncast/utils"
 	"github.com/owncast/owncast/yp"
 )
@@ -25,11 +27,8 @@ var (
 	_transcoder  *transcoder.Transcoder
 	_yp          *yp.YP
 	_broadcaster *models.Broadcaster
-)
-
-var (
-	handler    transcoder.HLSHandler
-	fileWriter = transcoder.FileWriterReceiverService{}
+	handler      transcoder.HLSHandler
+	fileWriter   = transcoder.FileWriterReceiverService{}
 )
 
 // Start starts up the core processing.
@@ -58,6 +57,7 @@ func Start() error {
 	}
 
 	user.SetupUsers()
+	auth.Setup(data.GetDatastore())
 
 	fileWriter.SetupFileWriterReceiverService(&handler)
 
@@ -79,6 +79,8 @@ func Start() error {
 	log.Infof("RTMP is accepting inbound streams on port %d.", rtmpPort)
 
 	webhooks.InitWorkerPool()
+
+	notifications.Setup(data.GetStore())
 
 	return nil
 }

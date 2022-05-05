@@ -14,8 +14,18 @@ func HasPopulatedDefaults() bool {
 	return hasPopulated
 }
 
+func hasPopulatedFederationDefaults() bool {
+	hasPopulated, err := _datastore.GetBool("HAS_POPULATED_FEDERATION_DEFAULTS")
+	if err != nil {
+		return false
+	}
+	return hasPopulated
+}
+
 // PopulateDefaults will set default values in the database.
 func PopulateDefaults() {
+	_datastore.warmCache()
+
 	defaults := config.GetDefaults()
 
 	if HasPopulatedDefaults() {
@@ -32,6 +42,7 @@ func PopulateDefaults() {
 	_ = SetServerName("Owncast")
 	_ = SetStreamKey(defaults.StreamKey)
 	_ = SetExtraPageBodyContent("This is your page's content that can be edited in the admin.")
+	_ = SetFederationGoLiveMessage(defaults.FederationGoLiveMessage)
 	_ = SetSocialHandles([]models.SocialHandle{
 		{
 			Platform: "github",
@@ -39,6 +50,5 @@ func PopulateDefaults() {
 		},
 	})
 
-	_datastore.warmCache()
 	_ = _datastore.SetBool("HAS_POPULATED_DEFAULTS", true)
 }

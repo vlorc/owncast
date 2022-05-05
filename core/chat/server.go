@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/owncast/owncast/config"
 	"github.com/owncast/owncast/core/chat/events"
 	"github.com/owncast/owncast/core/data"
 	"github.com/owncast/owncast/core/user"
@@ -83,7 +84,7 @@ func (s *Server) Addclient(conn *websocket.Conn, user *user.User, accessToken st
 		server:      s,
 		conn:        conn,
 		User:        user,
-		ipAddress:   ipAddress,
+		IPAddress:   ipAddress,
 		accessToken: accessToken,
 		send:        make(chan []byte, 256),
 		UserAgent:   userAgent,
@@ -91,7 +92,7 @@ func (s *Server) Addclient(conn *websocket.Conn, user *user.User, accessToken st
 	}
 
 	// Do not send user re-joined broadcast message if they've been active within 5 minutes.
-	shouldSendJoinedMessages := true
+	shouldSendJoinedMessages := data.GetChatJoinMessagesEnabled()
 	if previouslyLastSeen, ok := _lastSeenCache[user.ID]; ok && time.Since(previouslyLastSeen) < time.Minute*5 {
 		shouldSendJoinedMessages = false
 	}
@@ -160,6 +161,22 @@ func (s *Server) HandleClientConnection(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	ipAddress := utils.GetIPAddressFromRequest(r)
+	// Check if this client's IP address is banned. If so send a rejection.
+	if blocked, err := data.IsIPAddressBanned(ipAddress); blocked {
+		log.Debugln("Client ip address has been blocked. Rejecting.")
+		event := events.UserDisabledEvent{}
+		event.SetDefaults()
+
+		w.WriteHeader(http.StatusForbidden)
+		// Send this disabled event specifically to this single connected client
+		// to let them know they've been banned.
+		// _server.Send(event.GetBroadcastPayload(), client)
+		return
+	} else if err != nil {
+		log.Errorln("error determining if IP address is blocked: ", err)
+	}
+
 	// Limit concurrent chat connections
 	if int64(len(s.clients)) >= s.maxSocketConnectionLimit {
 		log.Warnln("rejecting incoming client connection as it exceeds the max client count of", s.maxSocketConnectionLimit)
@@ -184,10 +201,10 @@ func (s *Server) HandleClientConnection(w http.ResponseWriter, r *http.Request) 
 	// A user is required to use the websocket
 	user := user.GetUserByToken(accessToken)
 	if user == nil {
+		// Send error that registration is required
 		_ = conn.WriteJSON(events.EventPayload{
 			"type": events.ErrorNeedsRegistration,
 		})
-		// Send error that registration is required
 		_ = conn.Close()
 		return
 	}
@@ -203,7 +220,6 @@ func (s *Server) HandleClientConnection(w http.ResponseWriter, r *http.Request) 
 	}
 
 	userAgent := r.UserAgent()
-	ipAddress := utils.GetIPAddressFromRequest(r)
 
 	s.Addclient(conn, user, accessToken, userAgent, ipAddress)
 }
@@ -215,8 +231,8 @@ func (s *Server) Broadcast(payload events.EventPayload) error {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	for _, client := range s.clients {
 		if client == nil {
@@ -226,8 +242,7 @@ func (s *Server) Broadcast(payload events.EventPayload) error {
 		select {
 		case client.send <- data:
 		default:
-			client.close()
-			delete(s.clients, client.id)
+			go client.close()
 		}
 	}
 
@@ -245,17 +260,8 @@ func (s *Server) Send(payload events.EventPayload, client *Client) {
 	client.send <- data
 }
 
-// DisconnectUser will forcefully disconnect all clients belonging to a user by ID.
-func (s *Server) DisconnectUser(userID string) {
-	s.mu.Lock()
-	clients, err := GetClientsForUser(userID)
-	s.mu.Unlock()
-
-	if err != nil || clients == nil || len(clients) == 0 {
-		log.Debugln("Requested to disconnect user", userID, err)
-		return
-	}
-
+// DisconnectClients will forcefully disconnect all clients belonging to a user by ID.
+func (s *Server) DisconnectClients(clients []*Client) {
 	for _, client := range clients {
 		log.Traceln("Disconnecting client", client.User.ID, "owned by", client.User.DisplayName)
 
@@ -324,6 +330,16 @@ func SendActionToUser(userID string, text string) error {
 }
 
 func (s *Server) eventReceived(event chatClientEvent) {
+	c := event.client
+	u := c.User
+
+	// If established chat user only mode is enabled and the user is not old
+	// enough then reject this event and send them an informative message.
+	if u != nil && data.GetChatEstbalishedUsersOnlyMode() && time.Since(event.client.User.CreatedAt) < config.GetDefaults().ChatEstablishedUserModeTimeDuration && !u.IsModerator() {
+		s.sendActionToClient(c, "You have not been an established chat participant long enough to take part in chat. Please enjoy the stream and try again later.")
+		return
+	}
+
 	var typecheck map[string]interface{}
 	if err := json.Unmarshal(event.data, &typecheck); err != nil {
 		log.Debugln(err)

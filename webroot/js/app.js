@@ -2,11 +2,14 @@ import { h, Component } from '/js/web_modules/preact.js';
 import htm from '/js/web_modules/htm.js';
 const html = htm.bind(h);
 
+import { URL_WEBSOCKET } from './utils/constants.js';
+
 import { OwncastPlayer } from './components/player.js';
 import SocialIconsList from './components/platform-logos-list.js';
-import UsernameForm from './components/chat/username.js';
 import VideoPoster from './components/video-poster.js';
+import Followers from './components/federation/followers.js';
 import Chat from './components/chat/chat.js';
+import { ChatMenu } from './components/chat/chat-menu.js';
 import Websocket, {
   CALLBACKS,
   SOCKET_MESSAGE_TYPES,
@@ -17,10 +20,18 @@ import ExternalActionModal, {
   ExternalActionButton,
 } from './components/external-action-modal.js';
 
+import FediverseFollowModal, {
+  FediverseFollowButton,
+} from './components/fediverse-follow-modal.js';
+
+import { NotifyButton, NotifyModal } from './components/notification.js';
+import { isPushNotificationSupported } from './notification/registerWeb.js';
+import ChatSettingsModal from './components/chat-settings-modal.js';
+
 import {
   addNewlines,
+  checkUrlPathForDisplay,
   classNames,
-  clearLocalStorage,
   debounce,
   getLocalStorage,
   getOrientation,
@@ -28,6 +39,7 @@ import {
   makeLastOnlineString,
   parseSecondsToDurationString,
   pluralize,
+  ROUTE_RECORDINGS,
   setLocalStorage,
 } from './utils/helpers.js';
 import {
@@ -50,8 +62,11 @@ import {
   URL_STATUS,
   URL_VIEWER_PING,
   WIDTH_SINGLE_COL,
+  USER_VISIT_COUNT_KEY,
 } from './utils/constants.js';
 import { checkIsModerator } from './utils/chat.js';
+
+import TabBar from './components/tab-bar.js';
 
 export default class App extends Component {
   constructor(props, context) {
@@ -92,7 +107,16 @@ export default class App extends Component {
       windowHeight: window.innerHeight,
       orientation: getOrientation(this.hasTouchScreen),
 
-      externalAction: null,
+      // modals
+      externalActionModalData: null,
+      fediverseModalData: null,
+
+      // authentication options
+      indieAuthEnabled: false,
+
+      // routing & tabbing
+      section: '',
+      sectionId: '',
     };
 
     // timers
@@ -119,6 +143,13 @@ export default class App extends Component {
     this.handleKeyPressed = this.handleKeyPressed.bind(this);
     this.displayExternalAction = this.displayExternalAction.bind(this);
     this.closeExternalActionModal = this.closeExternalActionModal.bind(this);
+    this.displayFediverseFollowModal =
+      this.displayFediverseFollowModal.bind(this);
+    this.closeFediverseFollowModal = this.closeFediverseFollowModal.bind(this);
+    this.displayNotificationModal = this.displayNotificationModal.bind(this);
+    this.closeNotificationModal = this.closeNotificationModal.bind(this);
+    this.showAuthModal = this.showAuthModal.bind(this);
+    this.closeAuthModal = this.closeAuthModal.bind(this);
 
     // player events
     this.handlePlayerReady = this.handlePlayerReady.bind(this);
@@ -137,6 +168,7 @@ export default class App extends Component {
     this.hasConfiguredChat = false;
     this.setupChatAuth = this.setupChatAuth.bind(this);
     this.disableChat = this.disableChat.bind(this);
+    this.socketHostOverride = null;
   }
 
   componentDidMount() {
@@ -158,6 +190,23 @@ export default class App extends Component {
       onError: this.handlePlayerError,
     });
     this.player.init();
+
+    this.registerServiceWorker();
+
+    // check routing
+    this.getRoute();
+
+    // Increment the visit counter
+    this.incrementVisitCounter();
+  }
+
+  incrementVisitCounter() {
+    let visits = parseInt(getLocalStorage(USER_VISIT_COUNT_KEY));
+    if (isNaN(visits)) {
+      visits = 0;
+    }
+
+    setLocalStorage(USER_VISIT_COUNT_KEY, visits + 1);
   }
 
   componentWillUnmount() {
@@ -174,6 +223,13 @@ export default class App extends Component {
     if (this.hasTouchScreen) {
       window.removeEventListener('orientationchange', this.handleWindowResize);
     }
+  }
+
+  getRoute() {
+    const routeInfo = checkUrlPathForDisplay();
+    this.setState({
+      ...routeInfo,
+    });
   }
 
   // fetch /config data
@@ -218,8 +274,17 @@ export default class App extends Component {
   }
 
   setConfigData(data = {}) {
-    const { name, summary, chatDisabled } = data;
+    const {
+      name,
+      summary,
+      chatDisabled,
+      socketHostOverride,
+      notifications,
+      authentication,
+    } = data;
     window.document.title = name;
+
+    this.socketHostOverride = socketHostOverride;
 
     // If this is the first time setting the config
     // then setup chat if it's enabled.
@@ -228,9 +293,12 @@ export default class App extends Component {
     }
 
     this.hasConfiguredChat = true;
+    const { indieAuthEnabled } = authentication;
 
     this.setState({
       canChat: !chatDisabled,
+      notifications,
+      indieAuthEnabled,
       configData: {
         ...data,
         summary: summary && addNewlines(summary),
@@ -478,12 +546,13 @@ export default class App extends Component {
   }
 
   handleKeyPressed(e) {
-    if (
-      e.target !== document.getElementById('message-input') &&
-      e.target !== document.getElementById('username-change-input') &&
-      e.target !== document.getElementsByClassName('emoji-picker__search')[0] &&
-      this.state.streamOnline
-    ) {
+    // Only handle shortcuts if the focus is on the general page body,
+    // not a specific input field.
+    if (e.target !== document.getElementById('app-body')) {
+      return;
+    }
+
+    if (this.state.streamOnline) {
       switch (e.code) {
         case 'MediaPlayPause':
         case 'KeyP':
@@ -527,7 +596,7 @@ export default class App extends Component {
       return;
     }
     this.setState({
-      externalAction: {
+      externalActionModalData: {
         ...action,
         url: fullUrl,
       },
@@ -535,8 +604,43 @@ export default class App extends Component {
   }
   closeExternalActionModal() {
     this.setState({
-      externalAction: null,
+      externalActionModalData: null,
     });
+  }
+
+  displayFediverseFollowModal(data) {
+    this.setState({ fediverseModalData: data });
+  }
+  closeFediverseFollowModal() {
+    this.setState({ fediverseModalData: null });
+  }
+
+  displayNotificationModal(data) {
+    this.setState({ notificationModalData: data });
+  }
+  closeNotificationModal() {
+    this.setState({ notificationModalData: null });
+  }
+
+  async registerServiceWorker() {
+    try {
+      const reg = await navigator.serviceWorker.register('/serviceWorker.js', {
+        scope: '/',
+      });
+    } catch (err) {
+      console.error('Owncast service worker registration failed!', err);
+    }
+  }
+
+  showAuthModal() {
+    const data = {
+      title: 'Authenticate with chat',
+    };
+    this.setState({ authModalData: data });
+  }
+
+  closeAuthModal() {
+    this.setState({ authModalData: null });
   }
 
   handleWebsocketMessage(e) {
@@ -558,10 +662,11 @@ export default class App extends Component {
       // When connected the user will return an event letting us know what our
       // user details are so we can display them properly.
       const { user } = e;
-      const { displayName } = user;
+      const { displayName, authenticated } = user;
 
       this.setState({
         username: displayName,
+        authenticated,
         isModerator: checkIsModerator(e),
       });
     }
@@ -603,8 +708,11 @@ export default class App extends Component {
       });
     }
 
-    // Without a valid access token he websocket connection will be rejected.
-    const websocket = new Websocket(accessToken);
+    // Without a valid access token the websocket connection will be rejected.
+    const websocket = new Websocket(
+      accessToken,
+      this.socketHostOverride || URL_WEBSOCKET
+    );
     websocket.addListener(
       CALLBACKS.RAW_WEBSOCKET_MESSAGE_RECEIVED,
       this.handleWebsocketMessage
@@ -627,6 +735,7 @@ export default class App extends Component {
 
   render(props, state) {
     const {
+      accessToken,
       chatInputEnabled,
       configData,
       displayChatPanel,
@@ -641,13 +750,22 @@ export default class App extends Component {
       streamTitle,
       touchKeyboardActive,
       username,
+      authenticated,
       viewerCount,
       websocket,
       windowHeight,
       windowWidth,
-      externalAction,
+      fediverseModalData,
+      authModalData,
+      externalActionModalData,
+      notificationModalData,
+      notifications,
       lastDisconnectTime,
+      section,
+      sectionId,
+      indieAuthEnabled,
     } = state;
+
     const {
       version: appVersion,
       logo = TEMP_IMAGE,
@@ -660,6 +778,7 @@ export default class App extends Component {
       externalActions,
       customStyles,
       maxSocketPayloadSize,
+      federation = {},
     } = configData;
 
     const bgUserLogo = { backgroundImage: `url(${logo})` };
@@ -680,11 +799,17 @@ export default class App extends Component {
     const shortHeight = windowHeight <= HEIGHT_SHORT_WIDE && !isPortrait;
     const singleColMode = windowWidth <= WIDTH_SINGLE_COL && !shortHeight;
 
-    const shouldDisplayChat = displayChatPanel && canChat && !chatDisabled;
+    const noVideoContent =
+      !playerActive || (section === ROUTE_RECORDINGS && sectionId !== '');
+    const shouldDisplayChat =
+      displayChatPanel && !chatDisabled && chatInputEnabled;
 
     const extraAppClasses = classNames({
       'config-loading': configData.loading,
+
       chat: shouldDisplayChat,
+      'no-chat': !shouldDisplayChat,
+      'no-video': noVideoContent,
       'chat-hidden': !displayChatPanel && canChat && !chatDisabled, // hide panel
       'chat-disabled': !canChat || chatDisabled,
       'single-col': singleColMode,
@@ -699,44 +824,145 @@ export default class App extends Component {
       : html` <${VideoPoster} offlineImage=${logo} active=${streamOnline} /> `;
 
     // modal buttons
-    const externalActionButtons =
-      externalActions &&
-      externalActions.length > 0 &&
-      html`<div
-        id="external-actions-container"
-        class="flex flex-row align-center"
-      >
-        ${externalActions.map(
-          function (action) {
-            return html`<${ExternalActionButton}
-              onClick=${this.displayExternalAction}
-              action=${action}
-            />`;
-          }.bind(this)
-        )}
-      </div>`;
+    const notificationsButton =
+      notifications &&
+      notifications.browser.enabled &&
+      isPushNotificationSupported() &&
+      html`<${NotifyButton}
+        serverName=${name}
+        onClick=${this.displayNotificationModal}
+      />`;
+    const externalActionButtons = html`<div
+      id="external-actions-container"
+      class="flex flex-row flex-wrap justify-end"
+    >
+      ${externalActions &&
+      externalActions.map(
+        function (action) {
+          return html`<${ExternalActionButton}
+            onClick=${this.displayExternalAction}
+            action=${action}
+          />`;
+        }.bind(this)
+      )}
+
+      <!-- fediverse follow button -->
+      ${federation.enabled &&
+      html`<${FediverseFollowButton}
+        onClick=${this.displayFediverseFollowModal}
+        federationInfo=${federation}
+        serverName=${name}
+      />`}
+      ${notificationsButton}
+    </div>`;
 
     // modal component
     const externalActionModal =
-      externalAction &&
+      externalActionModalData &&
       html`<${ExternalActionModal}
-        action=${externalAction}
+        action=${externalActionModalData}
         onClose=${this.closeExternalActionModal}
       />`;
+
+    const fediverseFollowModal =
+      fediverseModalData &&
+      html`
+        <${ExternalActionModal}
+          onClose=${this.closeFediverseFollowModal}
+          action=${fediverseModalData}
+          useIframe=${false}
+          customContent=${html`<${FediverseFollowModal}
+            name=${name}
+            logo=${logo}
+            federationInfo=${federation}
+            onClose=${this.closeFediverseFollowModal}
+          />`}
+        />
+      `;
+
+    const notificationModal =
+      notificationModalData &&
+      html` <${ExternalActionModal}
+        onClose=${this.closeNotificationModal}
+        action=${notificationModalData}
+        useIframe=${false}
+        customContent=${html`<${NotifyModal}
+          notifications=${notifications}
+          streamName=${name}
+          accessToken=${accessToken}
+        />`}
+      />`;
+
+    const authModal =
+      authModalData &&
+      html`
+        <${ExternalActionModal}
+          onClose=${this.closeAuthModal}
+          action=${authModalData}
+          useIframe=${false}
+          customContent=${html`<${ChatSettingsModal}
+            name=${name}
+            logo=${logo}
+            onUsernameChange=${this.handleUsernameChange}
+            username=${username}
+            accessToken=${this.state.accessToken}
+            authenticated=${authenticated}
+            onClose=${this.closeAuthModal}
+            indieAuthEnabled=${indieAuthEnabled}
+            federationEnabled=${federation.enabled}
+          />`}
+        />
+      `;
 
     const chat = this.state.websocket
       ? html`
           <${Chat}
             websocket=${websocket}
             username=${username}
+            authenticated=${authenticated}
             chatInputEnabled=${chatInputEnabled && !chatDisabled}
             instanceTitle=${name}
-            accessToken=${this.state.accessToken}
+            accessToken=${accessToken}
             inputMaxBytes=${maxSocketPayloadSize - EST_SOCKET_PAYLOAD_BUFFER ||
             CHAT_MAX_MESSAGE_LENGTH}
           />
         `
       : null;
+
+    const TAB_CONTENT = [
+      {
+        label: 'About',
+        content: html`
+          <div>
+            <div
+              id="stream-summary"
+              class="stream-summary my-4"
+              dangerouslySetInnerHTML=${{ __html: summary }}
+            ></div>
+            <div id="tag-list" class="tag-list text-gray-600 mb-3">
+              ${tagList && `#${tagList}`}
+            </div>
+            <div
+              id="extra-user-content"
+              class="extra-user-content"
+              dangerouslySetInnerHTML=${{ __html: extraPageContent }}
+            ></div>
+          </div>
+        `,
+      },
+    ];
+
+    if (federation.enabled) {
+      TAB_CONTENT.push({
+        label: html`Followers
+        ${federation.followerCount > 10
+          ? `${' '}(${federation.followerCount})`
+          : null}`,
+        content: html`<${Followers} />`,
+      });
+    }
+
+    const authIcon = '/img/user-settings.svg';
 
     return html`
       <div
@@ -768,34 +994,25 @@ export default class App extends Component {
                 >${streamOnline && streamTitle ? streamTitle : name}</span
               >
             </h1>
-            <div
-              id="user-options-container"
-              class="flex flex-row justify-end items-center flex-no-wrap"
-            >
-              <${UsernameForm}
-                username=${username}
-                isModerator=${isModerator}
-                onUsernameChange=${this.handleUsernameChange}
-                onFocus=${this.handleFormFocus}
-                onBlur=${this.handleFormBlur}
-              />
-              <button
-                type="button"
-                id="chat-toggle"
-                onClick=${this.handleChatPanelToggle}
-                class="flex cursor-pointer text-center justify-center items-center min-w-12 h-full bg-gray-800 hover:bg-gray-700"
-                style=${{ display: chatDisabled ? 'none' : 'block' }}
-              >
-                💬
-              </button>
-            </div>
+
+            <${!chatDisabled && ChatMenu}
+              username=${username}
+              isModerator=${isModerator}
+              showAuthModal=${indieAuthEnabled && this.showAuthModal}
+              onUsernameChange=${this.handleUsernameChange}
+              onFocus=${this.handleFormFocus}
+              onBlur=${this.handleFormBlur}
+              chatDisabled=${chatDisabled}
+              noVideoContent=${noVideoContent}
+              handleChatPanelToggle=${this.handleChatPanelToggle}
+            />
           </header>
         </div>
 
         <main class=${mainClass}>
           <div
             id="video-container"
-            class="flex owncast-video-container bg-black w-full bg-center bg-no-repeat flex flex-col items-center justify-start"
+            class="flex owncast-video-container bg-black w-full bg-center bg-no-repeat flex-col items-center justify-start"
           >
             <video
               class="video-js vjs-big-play-centered display-block w-full h-full"
@@ -819,41 +1036,42 @@ export default class App extends Component {
           </section>
         </main>
 
-        <section id="user-content" aria-label="User information" class="p-8">
+        <section
+          id="user-content"
+          aria-label="Owncast server information"
+          class="p-2"
+        >
+          ${externalActionButtons && html`${externalActionButtons}`}
+
           <div class="user-content flex flex-row p-8">
             <div
-              class="user-image rounded-full bg-white p-4 mr-8 bg-no-repeat bg-center"
-              style=${bgUserLogo}
+              class="user-logo-icons flex flex-col items-center justify-start mr-8"
             >
-              <img class="logo visually-hidden" alt="" src=${logo} />
+              <div
+                class="user-image rounded-full bg-white p-4 bg-no-repeat bg-center"
+                style=${bgUserLogo}
+              >
+                <img class="logo visually-hidden" alt="" src=${logo} />
+              </div>
+              <div class="social-actions">
+                <${SocialIconsList} handles=${socialHandles} />
+              </div>
             </div>
-            <div
-              class="user-content-header border-b border-gray-500 border-solid"
-            >
-              <h2 class="font-semibold text-5xl">
+
+            <div class="user-content-header">
+              <h2 class="server-name font-semibold text-5xl">
                 <span class="streamer-name text-indigo-600">${name}</span>
               </h2>
-              ${externalActionButtons &&
-              html`<div>${externalActionButtons}</div>`}
               <h3 class="font-semibold text-3xl">
                 ${streamOnline && streamTitle}
               </h3>
-              <${SocialIconsList} handles=${socialHandles} />
-              <div
-                id="stream-summary"
-                class="stream-summary my-4"
-                dangerouslySetInnerHTML=${{ __html: summary }}
-              ></div>
-              <div id="tag-list" class="tag-list text-gray-600 mb-3">
-                ${tagList && `#${tagList}`}
+
+              <!-- tab bar -->
+              <div class="${TAB_CONTENT.length > 1 ? 'my-8' : 'my-3'}">
+                <${TabBar} tabs=${TAB_CONTENT} ariaLabel="User Content" />
               </div>
             </div>
           </div>
-          <div
-            id="extra-user-content"
-            class="extra-user-content px-8"
-            dangerouslySetInnerHTML=${{ __html: extraPageContent }}
-          ></div>
         </section>
 
         <footer class="flex flex-row justify-start p-8 opacity-50 text-xs">
@@ -864,7 +1082,8 @@ export default class App extends Component {
           </span>
         </footer>
 
-        ${chat} ${externalActionModal}
+        ${chat} ${externalActionModal} ${fediverseFollowModal}
+        ${notificationModal} ${authModal}
       </div>
     `;
   }

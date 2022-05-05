@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/url"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/mssola/user_agent"
 	log "github.com/sirupsen/logrus"
@@ -56,12 +59,43 @@ func Copy(source, destination string) error {
 		return err
 	}
 
-	return os.WriteFile(destination, input, 0600)
+	return os.WriteFile(destination, input, 0o600)
 }
 
-// Move moves the file to destination.
+// Move moves the file at source to destination.
 func Move(source, destination string) error {
-	return os.Rename(source, destination)
+	err := os.Rename(source, destination)
+	if err != nil {
+		log.Warnln("Moving with os.Rename failed, falling back to copy and delete!", err)
+		return moveFallback(source, destination)
+	}
+	return nil
+}
+
+// moveFallback moves a file using a copy followed by a delete, which works across file systems.
+// source: https://gist.github.com/var23rav/23ae5d0d4d830aff886c3c970b8f6c6b
+func moveFallback(source, destination string) error {
+	inputFile, err := os.Open(source) // nolint: gosec
+	if err != nil {
+		return fmt.Errorf("Couldn't open source file: %s", err)
+	}
+	outputFile, err := os.Create(destination) // nolint: gosec
+	if err != nil {
+		_ = inputFile.Close()
+		return fmt.Errorf("Couldn't open dest file: %s", err)
+	}
+	defer outputFile.Close()
+	_, err = io.Copy(outputFile, inputFile)
+	_ = inputFile.Close()
+	if err != nil {
+		return fmt.Errorf("Writing to output file failed: %s", err)
+	}
+	// The copy was successful, so now delete the original file
+	err = os.Remove(source)
+	if err != nil {
+		return fmt.Errorf("Failed removing original file: %s", err)
+	}
+	return nil
 }
 
 // IsUserAgentABot returns if a web client user-agent is seen as a bot.
@@ -231,7 +265,7 @@ func ValidatedFfmpegPath(ffmpegPath string) string {
 	cmd := exec.Command("which", "ffmpeg")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Fatalln("Unable to determine path to ffmpeg. Please make sure it is installed either globally or a copy exists in the owncast directory.")
+		log.Fatalln("Unable to determine path to ffmpeg. Please specify it in the admin or place a copy in the Owncast directory.")
 	}
 
 	path := strings.TrimSpace(string(out))
@@ -256,7 +290,7 @@ func VerifyFFMpegPath(path string) error {
 
 	mode := stat.Mode()
 	// source: https://stackoverflow.com/a/60128480
-	if mode&0111 == 0 {
+	if mode&0o111 == 0 {
 		return errors.New("ffmpeg path is not executable")
 	}
 
@@ -269,7 +303,7 @@ func CleanupDirectory(path string) {
 	if err := os.RemoveAll(path); err != nil {
 		log.Fatalln("Unable to remove directory. Please check the ownership and permissions", err)
 	}
-	if err := os.MkdirAll(path, 0750); err != nil {
+	if err := os.MkdirAll(path, 0o750); err != nil {
 		log.Fatalln("Unable to create directory. Please check the ownership and permissions", err)
 	}
 }
@@ -284,7 +318,7 @@ func FindInSlice(slice []string, val string) (int, bool) {
 	return -1, false
 }
 
-// StringSliceToMap is a convinience function to convert a slice of strings into
+// StringSliceToMap is a convenience function to convert a slice of strings into
 // a map using the string as the key.
 func StringSliceToMap(stringSlice []string) map[string]interface{} {
 	stringMap := map[string]interface{}{}
@@ -294,6 +328,17 @@ func StringSliceToMap(stringSlice []string) map[string]interface{} {
 	}
 
 	return stringMap
+}
+
+// Float64MapToSlice is a convenience function to convert a map of floats into.
+func Float64MapToSlice(float64Map map[string]float64) []float64 {
+	float64Slice := []float64{}
+
+	for _, val := range float64Map {
+		float64Slice = append(float64Slice, val)
+	}
+
+	return float64Slice
 }
 
 // StringMapKeys returns a slice of string keys from a map.
@@ -311,4 +356,39 @@ func GenerateRandomDisplayColor() int {
 	rangeLower := 0
 	rangeUpper := 360
 	return rangeLower + rand.Intn(rangeUpper-rangeLower+1) //nolint
+}
+
+// GetHostnameFromURL will return the hostname component from a URL string.
+func GetHostnameFromURL(u url.URL) string {
+	return u.Host
+}
+
+// GetHostnameFromURLString will return the hostname component from a URL object.
+func GetHostnameFromURLString(s string) string {
+	u, err := url.Parse(s)
+	if err != nil {
+		return ""
+	}
+
+	return u.Host
+}
+
+// GetHashtagsFromText returns all the #Hashtags from a string.
+func GetHashtagsFromText(text string) []string {
+	re := regexp.MustCompile(`#[a-zA-Z0-9_]+`)
+	return re.FindAllString(text, -1)
+}
+
+// ShuffleStringSlice will shuffle a slice of strings.
+func ShuffleStringSlice(s []string) []string {
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(s), func(i, j int) {
+		s[i], s[j] = s[j], s[i]
+	})
+	return s
+}
+
+// IntPercentage returns  an int percentage of a number.
+func IntPercentage(x, total int) int {
+	return int(float64(x) / float64(total) * 100)
 }

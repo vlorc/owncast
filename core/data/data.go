@@ -17,11 +17,13 @@ import (
 )
 
 const (
-	schemaVersion = 1
+	schemaVersion = 5
 )
 
-var _db *sql.DB
-var _datastore *Datastore
+var (
+	_db        *sql.DB
+	_datastore *Datastore
+)
 
 // GetDatabase will return the shared instance of the actual database.
 func GetDatabase() *sql.DB {
@@ -35,18 +37,34 @@ func GetStore() *Datastore {
 
 // SetupPersistence will open the datastore and make it available.
 func SetupPersistence(file string) error {
-	// Create empty DB file if it doesn't exist.
-	if !utils.DoesFileExists(file) {
-		log.Traceln("Creating new database at", file)
+	// Allow support for in-memory databases for tests.
 
-		_, err := os.Create(file)
+	var db *sql.DB
+
+	if file == ":memory:" {
+		inMemoryDb, err := sql.Open("sqlite3", file)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-	}
+		db = inMemoryDb
+	} else {
+		// Create empty DB file if it doesn't exist.
+		if !utils.DoesFileExists(file) {
+			log.Traceln("Creating new database at", file)
 
-	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?_cache_size=10000&cache=shared&_journal_mode=WAL", file))
-	db.SetMaxOpenConns(1)
+			_, err := os.Create(file) //nolint:gosec
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+		}
+
+		onDiskDb, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?_cache_size=10000&cache=shared&_journal_mode=WAL", file))
+		if err != nil {
+			return err
+		}
+		db = onDiskDb
+		db.SetMaxOpenConns(1)
+	}
 	_db = db
 
 	// Some SQLite optimizations
@@ -57,10 +75,7 @@ func SetupPersistence(file string) error {
 
 	createWebhooksTable()
 	createUsersTable(db)
-
-	if err != nil {
-		return err
-	}
+	createAccessTokenTable(db)
 
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS config (
 		"key" string NOT NULL PRIMARY KEY,
@@ -70,7 +85,7 @@ func SetupPersistence(file string) error {
 	}
 
 	var version int
-	err = db.QueryRow("SELECT value FROM config WHERE key='version'").
+	err := db.QueryRow("SELECT value FROM config WHERE key='version'").
 		Scan(&version)
 	if err != nil {
 		if err != sql.ErrNoRows {
@@ -93,7 +108,7 @@ func SetupPersistence(file string) error {
 
 	// is database schema outdated?
 	if version < schemaVersion {
-		if err := migrateDatabase(db, version, schemaVersion); err != nil {
+		if err := migrateDatabaseSchema(db, version, schemaVersion); err != nil {
 			return err
 		}
 	}
@@ -108,28 +123,6 @@ func SetupPersistence(file string) error {
 			utils.Backup(_db, backupFile)
 		}
 	}()
-
-	return nil
-}
-
-func migrateDatabase(db *sql.DB, from, to int) error {
-	log.Printf("Migrating database from version %d to %d", from, to)
-	dbBackupFile := filepath.Join(config.BackupDirectory, fmt.Sprintf("owncast-v%d.bak", from))
-	utils.Backup(db, dbBackupFile)
-	for v := from; v < to; v++ {
-		switch v {
-		case 0:
-			log.Tracef("Migration step from %d to %d\n", v, v+1)
-			migrateToSchema1(db)
-		default:
-			log.Fatalln("missing database migration step")
-		}
-	}
-
-	_, err := db.Exec("UPDATE config SET value = ? WHERE key = ?", to, "version")
-	if err != nil {
-		return err
-	}
 
 	return nil
 }

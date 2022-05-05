@@ -64,6 +64,7 @@
 #message-input:empty:before {
   content: attr(placeholderText);
   pointer-events: none;
+  position: absolute; /* Fixes firefox positioning caret on the right */
   display: block; /* For Firefox */
   color: rgba(0, 0, 0, 0.5);
 }
@@ -201,6 +202,13 @@
   height: 1.5rem;
 }
 
+.user-icon-flag {
+  display: inline-block;
+  margin-right: .5rem;
+  vertical-align: middle;
+  height: 0.8rem;
+}
+
 .moderator-actions-group {
   position: absolute;
   top: 0;
@@ -276,7 +284,7 @@
 }
 
 .message-author .flair {
-  height: 70%;
+  height: 15px;
   margin-right: 5px;
 }
 
@@ -334,3 +342,16 @@
 /* MODERATOR STYLES */
 /* MODERATOR STYLES */
 /* MODERATOR STYLES */
+
+.action-icon {
+  bottom: -5px;
+  right: -2px;
+  animation: spin 0.4s ease 1.0;
+  animation-fill-mode: forwards;
+  background-color: white;
+  background-size: cover;
+}
+
+.federated-action {
+  min-height: 76px;
+}

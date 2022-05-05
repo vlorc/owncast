@@ -5,9 +5,12 @@ import (
 	"database/sql"
 	"encoding/gob"
 	"sync"
+	"time"
 
 	// sqlite requires a blank import.
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/owncast/owncast/config"
+	"github.com/owncast/owncast/db"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -37,6 +40,11 @@ func (ds *Datastore) warmCache() {
 	}
 }
 
+// GetQueries will return the shared instance of the SQL query generator.
+func (ds *Datastore) GetQueries() *db.Queries {
+	return db.New(ds.DB)
+}
+
 // Get will query the database for the key and return the entry.
 func (ds *Datastore) Get(key string) (ConfigEntry, error) {
 	cachedValue, err := ds.GetCachedValue(key)
@@ -59,6 +67,7 @@ func (ds *Datastore) Get(key string) (ConfigEntry, error) {
 		Key:   resultKey,
 		Value: resultValue,
 	}
+	ds.SetCachedValue(resultKey, resultValue)
 
 	return result, nil
 }
@@ -109,7 +118,7 @@ func (ds *Datastore) Setup() {
 		"key" string NOT NULL PRIMARY KEY,
 		"value" BLOB,
 		"timestamp" DATE DEFAULT CURRENT_TIMESTAMP NOT NULL
-	);`
+	);CREATE INDEX IF NOT EXISTS messages_timestamp_index ON messages(timestamp);`
 
 	stmt, err := ds.DB.Prepare(createTableSQL)
 	if err != nil {
@@ -125,6 +134,22 @@ func (ds *Datastore) Setup() {
 	if !HasPopulatedDefaults() {
 		PopulateDefaults()
 	}
+
+	if !hasPopulatedFederationDefaults() {
+		if err := SetFederationGoLiveMessage(config.GetDefaults().FederationGoLiveMessage); err != nil {
+			log.Errorln(err)
+		}
+		if err := _datastore.SetBool("HAS_POPULATED_FEDERATION_DEFAULTS", true); err != nil {
+			log.Errorln(err)
+		}
+	}
+
+	// Set the server initialization date if needed.
+	if hasSetInitDate, _ := GetServerInitTime(); hasSetInitDate == nil || !hasSetInitDate.Valid {
+		_ = SetServerInitTime(time.Now())
+	}
+
+	migrateDatastoreValues(_datastore)
 }
 
 // Reset will delete all config entries in the datastore and start over.

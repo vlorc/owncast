@@ -16,6 +16,12 @@ export const URL_WEBSOCKET = `${
   location.protocol === 'https:' ? 'wss' : 'ws'
 }://${location.host}/ws`;
 export const URL_CHAT_REGISTRATION = `/api/chat/register`;
+export const URL_FOLLOWERS = `/api/followers`;
+export const URL_PLAYBACK_METRICS = `/api/metrics/playback`;
+
+export const URL_REGISTER_NOTIFICATION = `/api/notifications/register`;
+export const URL_REGISTER_EMAIL_NOTIFICATION = `/api/notifications/register/email`;
+export const URL_CHAT_INDIEAUTH_BEGIN = `/api/auth/indieauth`;
 
 export const TIMER_STATUS_UPDATE = 5000; // ms
 export const TIMER_DISABLE_CHAT_AFTER_OFFLINE = 5 * 60 * 1000; // 5 mins
@@ -59,7 +65,14 @@ export const CHAT_KEY_MODIFIERS = ['Control', 'Shift', 'Meta', 'Alt'];
 export const MESSAGE_JUMPTOBOTTOM_BUFFER = 500;
 
 // app styling
-export const WIDTH_SINGLE_COL = 730;
+export const WIDTH_SINGLE_COL = 780;
 export const HEIGHT_SHORT_WIDE = 500;
 export const ORIENTATION_PORTRAIT = 'portrait';
 export const ORIENTATION_LANDSCAPE = 'landscape';
+
+// localstorage keys
+export const HAS_DISPLAYED_NOTIFICATION_MODAL_KEY =
+  'HAS_DISPLAYED_NOTIFICATION_MODAL';
+export const USER_VISIT_COUNT_KEY = 'USER_VISIT_COUNT';
+export const USER_DISMISSED_ANNOYING_NOTIFICATION_POPUP_KEY =
+  'USER_DISMISSED_ANNOYING_NOTIFICATION_POPUP_KEY';

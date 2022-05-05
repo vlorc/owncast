@@ -24,15 +24,19 @@ export function clearLocalStorage(key) {
 }
 
 // jump down to the max height of a div, with a slight delay
-export function jumpToBottom(element) {
+export function jumpToBottom(element, behavior) {
   if (!element) return;
+
+  if (!behavior) {
+    behavior = document.visibilityState === 'visible' ? 'smooth' : 'instant';
+  }
 
   setTimeout(
     () => {
       element.scrollTo({
         top: element.scrollHeight,
         left: 0,
-        behavior: 'smooth',
+        behavior: behavior,
       });
     },
     50,
@@ -69,10 +73,7 @@ export function hasTouchScreen() {
       hasTouch = true; // deprecated, but good fallback
     } else {
       // Only as a last resort, fall back to user agent sniffing
-      var UA = navigator.userAgent;
-      hasTouch =
-        /\b(BlackBerry|webOS|iPhone|IEMobile)\b/i.test(UA) ||
-        /\b(Android|Windows Phone|iPad|iPod)\b/i.test(UA);
+      hasTouch = navigator.userAgentData.mobile;
     }
   }
   return hasTouch;
@@ -176,4 +177,38 @@ export function makeLastOnlineString(timestamp) {
   }
 
   return `Last live: ${string}`;
+}
+
+// Routing & Tabs
+export const ROUTE_RECORDINGS = 'recordings';
+export const ROUTE_SCHEDULE = 'schedule';
+// looks for `/recording|schedule/id` pattern to determine what to display from the tab view
+export function checkUrlPathForDisplay() {
+  const pathTest = [ROUTE_RECORDINGS, ROUTE_SCHEDULE];
+  const pathParts = window.location.pathname.split('/');
+
+  if (pathParts.length >= 2) {
+    const part = pathParts[1].toLowerCase();
+    if (pathTest.includes(part)) {
+      return {
+        section: part,
+        sectionId: pathParts[2] || '',
+      };
+    }
+  }
+  return null;
+}
+
+export function paginateArray(items, page, perPage) {
+  const offset = perPage * (page - 1);
+  const totalPages = Math.ceil(items.length / perPage);
+  const paginatedItems = items.slice(offset, perPage * page);
+
+  return {
+    previousPage: page - 1 ? page - 1 : null,
+    nextPage: totalPages > page ? page + 1 : null,
+    total: items.length,
+    totalPages: totalPages,
+    items: paginatedItems,
+  };
 }

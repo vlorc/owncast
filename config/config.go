@@ -13,6 +13,9 @@ var DatabaseFilePath = "data/owncast.db"
 // LogDirectory is the path to various log files.
 var LogDirectory = "./data/logs"
 
+// TempDir is where we store temporary files.
+var TempDir = "./data/tmp"
+
 // EnableDebugFeatures will print additional data to help in debugging.
 var EnableDebugFeatures = false
 

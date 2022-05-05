@@ -220,12 +220,11 @@ func (t *Transcoder) getString() string {
 
 		// Filenames
 		"-master_pl_name", "stream.m3u8",
-		"-strftime 1", // Support the use of strftime in filenames
 
-		"-hls_segment_filename", localListenerAddress + "/%v/stream-" + t.segmentIdentifier + "%s.ts", // Send HLS segments back to us over HTTP
+		"-hls_segment_filename", localListenerAddress + "/%v/stream-" + t.segmentIdentifier + "-%d.ts", // Send HLS segments back to us over HTTP
 		"-max_muxing_queue_size", "400", // Workaround for Too many packets error: https://trac.ffmpeg.org/ticket/6375?cversion=0
 
-		"-method PUT -http_persistent 0",         // HLS results sent back to us will be over PUTs
+		"-method PUT",                            // HLS results sent back to us will be over PUTs
 		localListenerAddress + "/%v/stream.m3u8", // Send HLS playlists back to us over HTTP
 	}
 

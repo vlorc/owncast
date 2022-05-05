@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/owncast/owncast/activitypub/outbox"
 	"github.com/owncast/owncast/controllers"
 	"github.com/owncast/owncast/core/chat"
 	"github.com/owncast/owncast/core/data"
@@ -18,6 +19,7 @@ import (
 	"github.com/owncast/owncast/models"
 	"github.com/owncast/owncast/utils"
 	log "github.com/sirupsen/logrus"
+	"github.com/teris-io/shortid"
 )
 
 // ConfigValue is a container object that holds a value, is encoded, and saved to the database.
@@ -42,6 +44,12 @@ func SetTags(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := data.SetServerMetadataTags(tagStrings); err != nil {
+		controllers.WriteSimpleResponse(w, false, err.Error())
+		return
+	}
+
+	// Update Fediverse followers about this change.
+	if err := outbox.UpdateFollowersWithAccountUpdates(); err != nil {
 		controllers.WriteSimpleResponse(w, false, err.Error())
 		return
 	}
@@ -99,6 +107,12 @@ func SetServerName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update Fediverse followers about this change.
+	if err := outbox.UpdateFollowersWithAccountUpdates(); err != nil {
+		controllers.WriteSimpleResponse(w, false, err.Error())
+		return
+	}
+
 	controllers.WriteSimpleResponse(w, true, "changed")
 }
 
@@ -114,6 +128,12 @@ func SetServerSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := data.SetServerSummary(configValue.Value.(string)); err != nil {
+		controllers.WriteSimpleResponse(w, false, err.Error())
+		return
+	}
+
+	// Update Fediverse followers about this change.
+	if err := outbox.UpdateFollowersWithAccountUpdates(); err != nil {
 		controllers.WriteSimpleResponse(w, false, err.Error())
 		return
 	}
@@ -223,12 +243,22 @@ func SetLogo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	imgPath := filepath.Join("data", "logo"+extension)
-	if err := os.WriteFile(imgPath, bytes, 0600); err != nil {
+	if err := os.WriteFile(imgPath, bytes, 0o600); err != nil {
 		controllers.WriteSimpleResponse(w, false, err.Error())
 		return
 	}
 
 	if err := data.SetLogoPath("logo" + extension); err != nil {
+		controllers.WriteSimpleResponse(w, false, err.Error())
+		return
+	}
+
+	if err := data.SetLogoUniquenessString(shortid.MustGenerate()); err != nil {
+		log.Error("Error saving logo uniqueness string: ", err)
+	}
+
+	// Update Fediverse followers about this change.
+	if err := outbox.UpdateFollowersWithAccountUpdates(); err != nil {
 		controllers.WriteSimpleResponse(w, false, err.Error())
 		return
 	}
@@ -366,12 +396,40 @@ func SetServerURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := data.SetServerURL(configValue.Value.(string)); err != nil {
+	rawValue, ok := configValue.Value.(string)
+	if !ok {
+		controllers.WriteSimpleResponse(w, false, "server url value invalid")
+		return
+	}
+
+	// Trim any trailing slash
+	serverURL := strings.TrimRight(rawValue, "/")
+
+	if err := data.SetServerURL(serverURL); err != nil {
 		controllers.WriteSimpleResponse(w, false, err.Error())
 		return
 	}
 
 	controllers.WriteSimpleResponse(w, true, "server url set")
+}
+
+// SetSocketHostOverride will set the host override for the websocket.
+func SetSocketHostOverride(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+
+	configValue, success := getValueFromRequest(w, r)
+	if !success {
+		return
+	}
+
+	if err := data.SetWebsocketOverrideHost(configValue.Value.(string)); err != nil {
+		controllers.WriteSimpleResponse(w, false, err.Error())
+		return
+	}
+
+	controllers.WriteSimpleResponse(w, true, "websocket host override set")
 }
 
 // SetDirectoryEnabled will handle the web config request to enable or disable directory registration.
@@ -504,6 +562,12 @@ func SetSocialHandles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update Fediverse followers about this change.
+	if err := outbox.UpdateFollowersWithAccountUpdates(); err != nil {
+		controllers.WriteSimpleResponse(w, false, err.Error())
+		return
+	}
+
 	controllers.WriteSimpleResponse(w, true, "social handles updated")
 }
 
@@ -562,6 +626,7 @@ func SetExternalActions(w http.ResponseWriter, r *http.Request) {
 
 	if err := data.SetExternalActions(actions.Value); err != nil {
 		controllers.WriteSimpleResponse(w, false, "unable to update external actions with provided values")
+		return
 	}
 
 	controllers.WriteSimpleResponse(w, true, "external actions update")
@@ -598,9 +663,52 @@ func SetForbiddenUsernameList(w http.ResponseWriter, r *http.Request) {
 
 	if err := data.SetForbiddenUsernameList(request.Value); err != nil {
 		controllers.WriteSimpleResponse(w, false, err.Error())
+		return
 	}
 
 	controllers.WriteSimpleResponse(w, true, "forbidden username list updated")
+}
+
+// SetSuggestedUsernameList will set the list of suggested usernames that newly registered users are assigned if it isn't inferred otherwise (i.e. through a proxy).
+func SetSuggestedUsernameList(w http.ResponseWriter, r *http.Request) {
+	type suggestedUsernameListRequest struct {
+		Value []string `json:"value"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	var request suggestedUsernameListRequest
+
+	if err := decoder.Decode(&request); err != nil {
+		controllers.WriteSimpleResponse(w, false, "unable to update suggested usernames with provided values")
+		return
+	}
+
+	if err := data.SetSuggestedUsernamesList(request.Value); err != nil {
+		controllers.WriteSimpleResponse(w, false, err.Error())
+		return
+	}
+
+	controllers.WriteSimpleResponse(w, true, "suggested username list updated")
+}
+
+// SetChatJoinMessagesEnabled will enable or disable the chat join messages.
+func SetChatJoinMessagesEnabled(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+
+	configValue, success := getValueFromRequest(w, r)
+	if !success {
+		controllers.WriteSimpleResponse(w, false, "unable to update chat join messages enabled")
+		return
+	}
+
+	if err := data.SetChatJoinMessagesEnabled(configValue.Value.(bool)); err != nil {
+		controllers.WriteSimpleResponse(w, false, err.Error())
+		return
+	}
+
+	controllers.WriteSimpleResponse(w, true, "chat join message status updated")
 }
 
 func requirePOST(w http.ResponseWriter, r *http.Request) bool {

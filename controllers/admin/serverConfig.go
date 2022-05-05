@@ -17,6 +17,7 @@ import (
 func GetServerConfig(w http.ResponseWriter, r *http.Request) {
 	ffmpeg := utils.ValidatedFfmpegPath(data.GetFfMpegPath())
 	usernameBlocklist := data.GetForbiddenUsernameList()
+	usernameSuggestions := data.GetSuggestedUsernamesList()
 
 	videoQualityVariants := make([]models.StreamOutputVariant, 0)
 	for _, variant := range data.GetStreamOutputVariants() {
@@ -45,12 +46,15 @@ func GetServerConfig(w http.ResponseWriter, r *http.Request) {
 			NSFW:             data.GetNSFW(),
 			CustomStyles:     data.GetCustomStyles(),
 		},
-		FFmpegPath:     ffmpeg,
-		StreamKey:      data.GetStreamKey(),
-		WebServerPort:  config.WebServerPort,
-		WebServerIP:    config.WebServerIP,
-		RTMPServerPort: data.GetRTMPPortNumber(),
-		ChatDisabled:   data.GetChatDisabled(),
+		FFmpegPath:              ffmpeg,
+		StreamKey:               data.GetStreamKey(),
+		WebServerPort:           config.WebServerPort,
+		WebServerIP:             config.WebServerIP,
+		RTMPServerPort:          data.GetRTMPPortNumber(),
+		ChatDisabled:            data.GetChatDisabled(),
+		ChatJoinMessagesEnabled: data.GetChatJoinMessagesEnabled(),
+		SocketHostOverride:      data.GetWebsocketOverrideHost(),
+		ChatEstablishedUserMode: data.GetChatEstbalishedUsersOnlyMode(),
 		VideoSettings: videoSettings{
 			VideoQualityVariants: videoQualityVariants,
 			LatencyLevel:         data.GetStreamLatencyLevel().Level,
@@ -64,6 +68,20 @@ func GetServerConfig(w http.ResponseWriter, r *http.Request) {
 		SupportedCodecs:    transcoder.GetCodecs(ffmpeg),
 		VideoCodec:         data.GetVideoCodec(),
 		ForbiddenUsernames: usernameBlocklist,
+		SuggestedUsernames: usernameSuggestions,
+		Federation: federationConfigResponse{
+			Enabled:        data.GetFederationEnabled(),
+			IsPrivate:      data.GetFederationIsPrivate(),
+			Username:       data.GetFederationUsername(),
+			GoLiveMessage:  data.GetFederationGoLiveMessage(),
+			ShowEngagement: data.GetFederationShowEngagement(),
+			BlockedDomains: data.GetBlockedFederatedDomains(),
+		},
+		Notifications: notificationsConfigResponse{
+			Discord: data.GetDiscordConfig(),
+			Browser: data.GetBrowserPushConfig(),
+			Twitter: data.GetTwitterConfiguration(),
+		},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -75,20 +93,26 @@ func GetServerConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 type serverConfigAdminResponse struct {
-	InstanceDetails    webConfigResponse       `json:"instanceDetails"`
-	FFmpegPath         string                  `json:"ffmpegPath"`
-	StreamKey          string                  `json:"streamKey"`
-	WebServerPort      int                     `json:"webServerPort"`
-	WebServerIP        string                  `json:"webServerIP"`
-	RTMPServerPort     int                     `json:"rtmpServerPort"`
-	S3                 models.S3               `json:"s3"`
-	VideoSettings      videoSettings           `json:"videoSettings"`
-	YP                 yp                      `json:"yp"`
-	ChatDisabled       bool                    `json:"chatDisabled"`
-	ExternalActions    []models.ExternalAction `json:"externalActions"`
-	SupportedCodecs    []string                `json:"supportedCodecs"`
-	VideoCodec         string                  `json:"videoCodec"`
-	ForbiddenUsernames []string                `json:"forbiddenUsernames"`
+	InstanceDetails         webConfigResponse           `json:"instanceDetails"`
+	FFmpegPath              string                      `json:"ffmpegPath"`
+	StreamKey               string                      `json:"streamKey"`
+	WebServerPort           int                         `json:"webServerPort"`
+	WebServerIP             string                      `json:"webServerIP"`
+	RTMPServerPort          int                         `json:"rtmpServerPort"`
+	S3                      models.S3                   `json:"s3"`
+	VideoSettings           videoSettings               `json:"videoSettings"`
+	YP                      yp                          `json:"yp"`
+	ChatDisabled            bool                        `json:"chatDisabled"`
+	ChatJoinMessagesEnabled bool                        `json:"chatJoinMessagesEnabled"`
+	ChatEstablishedUserMode bool                        `json:"chatEstablishedUserMode"`
+	ExternalActions         []models.ExternalAction     `json:"externalActions"`
+	SupportedCodecs         []string                    `json:"supportedCodecs"`
+	VideoCodec              string                      `json:"videoCodec"`
+	ForbiddenUsernames      []string                    `json:"forbiddenUsernames"`
+	Federation              federationConfigResponse    `json:"federation"`
+	SuggestedUsernames      []string                    `json:"suggestedUsernames"`
+	SocketHostOverride      string                      `json:"socketHostOverride,omitempty"`
+	Notifications           notificationsConfigResponse `json:"notifications"`
 }
 
 type videoSettings struct {
@@ -114,4 +138,19 @@ type yp struct {
 	Enabled      bool   `json:"enabled"`
 	InstanceURL  string `json:"instanceUrl"` // The public URL the directory should link to
 	YPServiceURL string `json:"-"`           // The base URL to the YP API to register with (optional)
+}
+
+type federationConfigResponse struct {
+	Enabled        bool     `json:"enabled"`
+	IsPrivate      bool     `json:"isPrivate"`
+	Username       string   `json:"username"`
+	GoLiveMessage  string   `json:"goLiveMessage"`
+	ShowEngagement bool     `json:"showEngagement"`
+	BlockedDomains []string `json:"blockedDomains"`
+}
+
+type notificationsConfigResponse struct {
+	Browser models.BrowserNotificationConfiguration `json:"browser"`
+	Discord models.DiscordConfiguration             `json:"discord"`
+	Twitter models.TwitterConfiguration             `json:"twitter"`
 }

@@ -3,6 +3,7 @@ package chat
 import (
 	"bytes"
 	"encoding/json"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -17,12 +18,13 @@ import (
 
 // Client represents a single chat client.
 type Client struct {
+	mu          sync.RWMutex
 	id          uint
 	accessToken string
 	conn        *websocket.Conn
 	User        *user.User `json:"user"`
 	server      *Server
-	ipAddress   string `json:"-"`
+	IPAddress   string `json:"-"`
 	// Buffered channel of outbound messages.
 	send         chan []byte
 	rateLimiter  *rate.Limiter
@@ -94,7 +96,6 @@ func (c *Client) readPump() {
 	c.conn.SetPongHandler(func(string) error { _ = c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	for {
 		_, message, err := c.conn.ReadMessage()
-
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				c.close()
@@ -153,11 +154,13 @@ func (c *Client) writePump() {
 
 			// Optimization: Send multiple events in a single websocket message.
 			// Add queued chat messages to the current websocket message.
+			c.mu.RLock()
 			n := len(c.send)
 			for i := 0; i < n; i++ {
 				_, _ = w.Write(newline)
 				_, _ = w.Write(<-c.send)
 			}
+			c.mu.RUnlock()
 
 			if err := w.Close(); err != nil {
 				return
@@ -176,11 +179,14 @@ func (c *Client) handleEvent(data []byte) {
 }
 
 func (c *Client) close() {
-	log.Traceln("client closed:", c.User.DisplayName, c.id, c.ipAddress)
+	log.Traceln("client closed:", c.User.DisplayName, c.id, c.IPAddress)
 
-	_ = c.conn.Close()
-	c.server.unregister <- c.id
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.send != nil {
+		_ = c.conn.Close()
+		c.server.unregister <- c.id
 		close(c.send)
 		c.send = nil
 	}
@@ -214,6 +220,9 @@ func (c *Client) sendPayload(payload interface{}) {
 		log.Errorln(err)
 		return
 	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	if c.send != nil {
 		c.send <- data

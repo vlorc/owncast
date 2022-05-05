@@ -6,16 +6,21 @@ import {
 
 // Taken from https://stackoverflow.com/a/46902361
 export function getCaretPosition(node) {
-  var range = window.getSelection().getRangeAt(0),
-    preCaretRange = range.cloneRange(),
-    caretPosition,
-    tmp = document.createElement('div');
+  const selection = window.getSelection();
+
+  if (selection.rangeCount === 0) {
+    return 0;
+  }
+
+  const range = selection.getRangeAt(0);
+  const preCaretRange = range.cloneRange();
+  const tempElement = document.createElement('div');
 
   preCaretRange.selectNodeContents(node);
   preCaretRange.setEnd(range.endContainer, range.endOffset);
-  tmp.appendChild(preCaretRange.cloneContents());
-  caretPosition = tmp.innerHTML.length;
-  return caretPosition;
+  tempElement.appendChild(preCaretRange.cloneContents());
+
+  return tempElement.innerHTML.length;
 }
 
 // Might not need this anymore
@@ -43,11 +48,13 @@ export function generatePlaceholderText(isEnabled, hasSentFirstChatMessage) {
 export function extraUserNamesFromMessageHistory(messages) {
   const list = [];
   if (messages) {
-    messages.forEach(function (message) {
-      if (!list.includes(message.user.displayName)) {
-        list.push(message.user.displayName);
-      }
-    });
+    messages
+      .filter((m) => m.user && m.user.displayName)
+      .forEach(function (message) {
+        if (!list.includes(message.user.displayName)) {
+          list.push(message.user.displayName);
+        }
+      });
   }
   return list;
 }

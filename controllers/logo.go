@@ -12,6 +12,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var _hasWarnedSVGLogo = false
+
 // GetLogo will return the logo image as a response.
 func GetLogo(w http.ResponseWriter, r *http.Request) {
 	imageFilename := data.GetLogoPath()
@@ -65,11 +67,10 @@ func GetCompatibleLogo(w http.ResponseWriter, r *http.Request) {
 	cacheTime := utils.GetCacheDurationSecondsForPath(imagePath)
 	writeBytesAsImage(imageBytes, contentType, w, cacheTime)
 
-	referrer := r.Referer()
-	if referrer == "" {
-		referrer = "an external site"
+	if !_hasWarnedSVGLogo {
+		log.Warnf("an external site requested your logo. because many social networks do not support SVGs we returned a placeholder instead. change your current logo to a png or jpeg to be most compatible with external social networking sites.")
+		_hasWarnedSVGLogo = true
 	}
-	log.Warnf("%s requested your logo. because many social networks do not support SVGs we returned a placeholder instead. change your current logo \"%s\" to a png or jpeg to be most compatible with external social networking sites.", referrer, imageFilename)
 }
 
 func returnDefault(w http.ResponseWriter) {

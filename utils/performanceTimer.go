@@ -41,7 +41,7 @@ func GetAveragePerformance(key string) float64 {
 	}
 	_durationStorage[key] = removeHighValue(_durationStorage[key])
 
-	return avg(_durationStorage[key])
+	return Avg(_durationStorage[key])
 }
 
 func removeHighValue(values []float64) []float64 {
@@ -49,11 +49,62 @@ func removeHighValue(values []float64) []float64 {
 	return values[:len(values)-1]
 }
 
-func avg(values []float64) float64 {
+// Avg will return the average value from a slice of float64s.
+func Avg(values []float64) float64 {
 	total := 0.0
 	for _, number := range values {
 		total += number
 	}
 	average := total / float64(len(values))
 	return average
+}
+
+// Sum returns the sum of a slice of values.
+func Sum(values []float64) float64 {
+	total := 0.0
+	for _, number := range values {
+		total += number
+	}
+	return total
+}
+
+// MinMax will return the min and max values from a slice of float64s.
+func MinMax(array []float64) (float64, float64) {
+	max := array[0]
+	min := array[0]
+	for _, value := range array {
+		if max < value {
+			max = value
+		}
+		if min > value {
+			min = value
+		}
+	}
+	return min, max
+}
+
+func mean(input []float64) float64 {
+	sum := Sum(input)
+
+	return sum / float64(len(input))
+}
+
+// Median gets the median number in a slice of numbers.
+func Median(input []float64) float64 {
+	if len(input) == 1 {
+		return input[0]
+	}
+
+	c := make([]float64, len(input))
+	copy(c, input)
+
+	var median float64
+	l := len(c)
+	if l%2 == 0 {
+		median = mean(c[l/2-1 : l/2+1])
+	} else {
+		median = c[l/2]
+	}
+
+	return median
 }

@@ -13,35 +13,57 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const extraContentKey = "extra_page_content"
-const streamTitleKey = "stream_title"
-const streamKeyKey = "stream_key"
-const logoPathKey = "logo_path"
-const serverSummaryKey = "server_summary"
-const serverWelcomeMessageKey = "server_welcome_message"
-const serverNameKey = "server_name"
-const serverURLKey = "server_url"
-const httpPortNumberKey = "http_port_number"
-const httpListenAddressKey = "http_listen_address"
-const rtmpPortNumberKey = "rtmp_port_number"
-const serverMetadataTagsKey = "server_metadata_tags"
-const directoryEnabledKey = "directory_enabled"
-const directoryRegistrationKeyKey = "directory_registration_key"
-const socialHandlesKey = "social_handles"
-const peakViewersSessionKey = "peak_viewers_session"
-const peakViewersOverallKey = "peak_viewers_overall"
-const lastDisconnectTimeKey = "last_disconnect_time"
-const ffmpegPathKey = "ffmpeg_path"
-const nsfwKey = "nsfw"
-const s3StorageEnabledKey = "s3_storage_enabled"
-const s3StorageConfigKey = "s3_storage_config"
-const videoLatencyLevel = "video_latency_level"
-const videoStreamOutputVariantsKey = "video_stream_output_variants"
-const chatDisabledKey = "chat_disabled"
-const externalActionsKey = "external_actions"
-const customStylesKey = "custom_styles"
-const videoCodecKey = "video_codec"
-const blockedUsernamesKey = "blocked_usernames"
+const (
+	extraContentKey                      = "extra_page_content"
+	streamTitleKey                       = "stream_title"
+	streamKeyKey                         = "stream_key"
+	logoPathKey                          = "logo_path"
+	logoUniquenessKey                    = "logo_uniqueness"
+	serverSummaryKey                     = "server_summary"
+	serverWelcomeMessageKey              = "server_welcome_message"
+	serverNameKey                        = "server_name"
+	serverURLKey                         = "server_url"
+	httpPortNumberKey                    = "http_port_number"
+	httpListenAddressKey                 = "http_listen_address"
+	websocketHostOverrideKey             = "websocket_host_override"
+	rtmpPortNumberKey                    = "rtmp_port_number"
+	serverMetadataTagsKey                = "server_metadata_tags"
+	directoryEnabledKey                  = "directory_enabled"
+	directoryRegistrationKeyKey          = "directory_registration_key"
+	socialHandlesKey                     = "social_handles"
+	peakViewersSessionKey                = "peak_viewers_session"
+	peakViewersOverallKey                = "peak_viewers_overall"
+	lastDisconnectTimeKey                = "last_disconnect_time"
+	ffmpegPathKey                        = "ffmpeg_path"
+	nsfwKey                              = "nsfw"
+	s3StorageConfigKey                   = "s3_storage_config"
+	videoLatencyLevel                    = "video_latency_level"
+	videoStreamOutputVariantsKey         = "video_stream_output_variants"
+	chatDisabledKey                      = "chat_disabled"
+	externalActionsKey                   = "external_actions"
+	customStylesKey                      = "custom_styles"
+	videoCodecKey                        = "video_codec"
+	blockedUsernamesKey                  = "blocked_usernames"
+	publicKeyKey                         = "public_key"
+	privateKeyKey                        = "private_key"
+	serverInitDateKey                    = "server_init_date"
+	federationEnabledKey                 = "federation_enabled"
+	federationUsernameKey                = "federation_username"
+	federationPrivateKey                 = "federation_private"
+	federationGoLiveMessageKey           = "federation_go_live_message"
+	federationShowEngagementKey          = "federation_show_engagement"
+	federationBlockedDomainsKey          = "federation_blocked_domains"
+	suggestedUsernamesKey                = "suggested_usernames"
+	chatJoinMessagesEnabledKey           = "chat_join_messages_enabled"
+	chatEstablishedUsersOnlyModeKey      = "chat_established_users_only_mode"
+	notificationsEnabledKey              = "notifications_enabled"
+	discordConfigurationKey              = "discord_configuration"
+	browserPushConfigurationKey          = "browser_push_configuration"
+	browserPushPublicKeyKey              = "browser_push_public_key"
+	browserPushPrivateKeyKey             = "browser_push_private_key"
+	twitterConfigurationKey              = "twitter_configuration"
+	hasConfiguredInitialNotificationsKey = "has_configured_initial_notifications"
+)
 
 // GetExtraPageBodyContent will return the user-supplied body content.
 func GetExtraPageBodyContent() string {
@@ -108,6 +130,22 @@ func GetLogoPath() string {
 // SetLogoPath will set the path for the logo, relative to webroot.
 func SetLogoPath(logo string) error {
 	return _datastore.SetString(logoPathKey, logo)
+}
+
+// SetLogoUniquenessString will set the logo cache busting string.
+func SetLogoUniquenessString(uniqueness string) error {
+	return _datastore.SetString(logoUniquenessKey, uniqueness)
+}
+
+// GetLogoUniquenessString will return the logo cache busting string.
+func GetLogoUniquenessString() string {
+	uniqueness, err := _datastore.GetString(logoUniquenessKey)
+	if err != nil {
+		log.Traceln(logoUniquenessKey, err)
+		return ""
+	}
+
+	return uniqueness
 }
 
 // GetServerSummary will return the server summary text.
@@ -185,6 +223,18 @@ func GetHTTPPortNumber() int {
 		return config.GetDefaults().WebServerPort
 	}
 	return int(port)
+}
+
+// SetWebsocketOverrideHost will set the host override for websockets.
+func SetWebsocketOverrideHost(host string) error {
+	return _datastore.SetString(websocketHostOverrideKey, host)
+}
+
+// GetWebsocketOverrideHost will return the host override for websockets.
+func GetWebsocketOverrideHost() string {
+	host, _ := _datastore.GetString(websocketHostOverrideKey)
+
+	return host
 }
 
 // SetHTTPPortNumber will set the server HTTP port.
@@ -294,7 +344,7 @@ func GetSocialHandles() []models.SocialHandle {
 
 // SetSocialHandles will set the external social links.
 func SetSocialHandles(socialHandles []models.SocialHandle) error {
-	var configEntry = ConfigEntry{Key: socialHandlesKey, Value: socialHandles}
+	configEntry := ConfigEntry{Key: socialHandlesKey, Value: socialHandles}
 	return _datastore.Save(configEntry)
 }
 
@@ -349,7 +399,7 @@ func GetLastDisconnectTime() (*utils.NullTime, error) {
 // SetLastDisconnectTime will set the time the last stream ended.
 func SetLastDisconnectTime(disconnectTime time.Time) error {
 	savedDisconnectTime := utils.NullTime{Time: disconnectTime, Valid: true}
-	var configEntry = ConfigEntry{Key: lastDisconnectTimeKey, Value: savedDisconnectTime}
+	configEntry := ConfigEntry{Key: lastDisconnectTimeKey, Value: savedDisconnectTime}
 	return _datastore.Save(configEntry)
 }
 
@@ -398,24 +448,8 @@ func GetS3Config() models.S3 {
 
 // SetS3Config will set the external storage configuration.
 func SetS3Config(config models.S3) error {
-	var configEntry = ConfigEntry{Key: s3StorageConfigKey, Value: config}
+	configEntry := ConfigEntry{Key: s3StorageConfigKey, Value: config}
 	return _datastore.Save(configEntry)
-}
-
-// GetS3StorageEnabled will return if external storage is enabled.
-func GetS3StorageEnabled() bool {
-	enabled, err := _datastore.GetBool(s3StorageEnabledKey)
-	if err != nil {
-		log.Traceln(err)
-		return false
-	}
-
-	return enabled
-}
-
-// SetS3StorageEnabled will enable or disable external storage.
-func SetS3StorageEnabled(enabled bool) error {
-	return _datastore.SetBool(s3StorageEnabledKey, enabled)
 }
 
 // GetStreamLatencyLevel will return the stream latency level.
@@ -456,7 +490,7 @@ func GetStreamOutputVariants() []models.StreamOutputVariant {
 
 // SetStreamOutputVariants will set the stream output variants.
 func SetStreamOutputVariants(variants []models.StreamOutputVariant) error {
-	var configEntry = ConfigEntry{Key: videoStreamOutputVariantsKey, Value: variants}
+	configEntry := ConfigEntry{Key: videoStreamOutputVariantsKey, Value: variants}
 	return _datastore.Save(configEntry)
 }
 
@@ -470,6 +504,21 @@ func GetChatDisabled() bool {
 	disabled, err := _datastore.GetBool(chatDisabledKey)
 	if err == nil {
 		return disabled
+	}
+
+	return false
+}
+
+// SetChatEstablishedUsersOnlyMode sets the state of established user only mode.
+func SetChatEstablishedUsersOnlyMode(enabled bool) error {
+	return _datastore.SetBool(chatEstablishedUsersOnlyModeKey, enabled)
+}
+
+// GetChatEstbalishedUsersOnlyMode returns the state of established user only mode.
+func GetChatEstbalishedUsersOnlyMode() bool {
+	enabled, err := _datastore.GetBool(chatEstablishedUsersOnlyModeKey)
+	if err == nil {
+		return enabled
 	}
 
 	return false
@@ -492,7 +541,7 @@ func GetExternalActions() []models.ExternalAction {
 
 // SetExternalActions will save external actions.
 func SetExternalActions(actions []models.ExternalAction) error {
-	var configEntry = ConfigEntry{Key: externalActionsKey, Value: actions}
+	configEntry := ConfigEntry{Key: externalActionsKey, Value: actions}
 	return _datastore.Save(configEntry)
 }
 
@@ -529,7 +578,7 @@ func GetVideoCodec() string {
 // VerifySettings will perform a sanity check for specific settings values.
 func VerifySettings() error {
 	if GetStreamKey() == "" {
-		return errors.New("no stream key set. Please set one in your config file")
+		return errors.New("no stream key set. Please set one via the admin or command line arguments")
 	}
 
 	logoPath := GetLogoPath()
@@ -581,23 +630,279 @@ func FindHighestVideoQualityIndex(qualities []models.StreamOutputVariant) int {
 
 // GetForbiddenUsernameList will return the blocked usernames as a comma separated string.
 func GetForbiddenUsernameList() []string {
-	usernameString, err := _datastore.GetString(blockedUsernamesKey)
-
+	usernames, err := _datastore.GetStringSlice(blockedUsernamesKey)
 	if err != nil {
 		return config.DefaultForbiddenUsernames
 	}
 
-	if usernameString == "" {
+	if len(usernames) == 0 {
 		return config.DefaultForbiddenUsernames
 	}
 
-	blocklist := strings.Split(usernameString, ",")
-
-	return blocklist
+	return usernames
 }
 
 // SetForbiddenUsernameList set the username blocklist as a comma separated string.
 func SetForbiddenUsernameList(usernames []string) error {
-	usernameListString := strings.Join(usernames, ",")
-	return _datastore.SetString(blockedUsernamesKey, usernameListString)
+	return _datastore.SetStringSlice(blockedUsernamesKey, usernames)
+}
+
+// GetSuggestedUsernamesList will return the suggested usernames.
+// If the number of suggested usernames is smaller than 10, the number pool is
+// not used (see code in the CreateAnonymousUser function).
+func GetSuggestedUsernamesList() []string {
+	usernames, err := _datastore.GetStringSlice(suggestedUsernamesKey)
+
+	if err != nil || len(usernames) == 0 {
+		return []string{}
+	}
+
+	return usernames
+}
+
+// SetSuggestedUsernamesList sets the username suggestion list.
+func SetSuggestedUsernamesList(usernames []string) error {
+	return _datastore.SetStringSlice(suggestedUsernamesKey, usernames)
+}
+
+// GetServerInitTime will return when the server was first setup.
+func GetServerInitTime() (*utils.NullTime, error) {
+	var t utils.NullTime
+
+	configEntry, err := _datastore.Get(serverInitDateKey)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := configEntry.getObject(&t); err != nil {
+		return nil, err
+	}
+
+	if !t.Valid {
+		return nil, err
+	}
+
+	return &t, nil
+}
+
+// SetServerInitTime will set when the server was first created.
+func SetServerInitTime(t time.Time) error {
+	nt := utils.NullTime{Time: t, Valid: true}
+	configEntry := ConfigEntry{Key: serverInitDateKey, Value: nt}
+	return _datastore.Save(configEntry)
+}
+
+// SetFederationEnabled will enable federation if set to true.
+func SetFederationEnabled(enabled bool) error {
+	return _datastore.SetBool(federationEnabledKey, enabled)
+}
+
+// GetFederationEnabled will return if federation is enabled.
+func GetFederationEnabled() bool {
+	enabled, err := _datastore.GetBool(federationEnabledKey)
+	if err == nil {
+		return enabled
+	}
+
+	return false
+}
+
+// SetFederationUsername will set the username used in federated activities.
+func SetFederationUsername(username string) error {
+	return _datastore.SetString(federationUsernameKey, username)
+}
+
+// GetFederationUsername will return the username used in federated activities.
+func GetFederationUsername() string {
+	username, err := _datastore.GetString(federationUsernameKey)
+	if username == "" || err != nil {
+		return config.GetDefaults().FederationUsername
+	}
+
+	return username
+}
+
+// SetFederationGoLiveMessage will set the message sent when going live.
+func SetFederationGoLiveMessage(message string) error {
+	return _datastore.SetString(federationGoLiveMessageKey, message)
+}
+
+// GetFederationGoLiveMessage will return the message sent when going live.
+func GetFederationGoLiveMessage() string {
+	// Empty message means it's disabled.
+	message, err := _datastore.GetString(federationGoLiveMessageKey)
+	if err != nil {
+		log.Traceln("unable to fetch go live message.", err)
+	}
+
+	return message
+}
+
+// SetFederationIsPrivate will set if federation activity is private.
+func SetFederationIsPrivate(isPrivate bool) error {
+	return _datastore.SetBool(federationPrivateKey, isPrivate)
+}
+
+// GetFederationIsPrivate will return if federation is private.
+func GetFederationIsPrivate() bool {
+	isPrivate, err := _datastore.GetBool(federationPrivateKey)
+	if err == nil {
+		return isPrivate
+	}
+
+	return false
+}
+
+// SetFederationShowEngagement will set if fediverse engagement shows in chat.
+func SetFederationShowEngagement(showEngagement bool) error {
+	return _datastore.SetBool(federationShowEngagementKey, showEngagement)
+}
+
+// GetFederationShowEngagement will return if fediverse engagement shows in chat.
+func GetFederationShowEngagement() bool {
+	showEngagement, err := _datastore.GetBool(federationShowEngagementKey)
+	if err == nil {
+		return showEngagement
+	}
+
+	return true
+}
+
+// SetBlockedFederatedDomains will set the blocked federated domains.
+func SetBlockedFederatedDomains(domains []string) error {
+	return _datastore.SetString(federationBlockedDomainsKey, strings.Join(domains, ","))
+}
+
+// GetBlockedFederatedDomains will return a list of blocked federated domains.
+func GetBlockedFederatedDomains() []string {
+	domains, err := _datastore.GetString(federationBlockedDomainsKey)
+	if err != nil {
+		return []string{}
+	}
+
+	if domains == "" {
+		return []string{}
+	}
+
+	return strings.Split(domains, ",")
+}
+
+// SetChatJoinMessagesEnabled will set if chat join messages are enabled.
+func SetChatJoinMessagesEnabled(enabled bool) error {
+	return _datastore.SetBool(chatJoinMessagesEnabledKey, enabled)
+}
+
+// GetChatJoinMessagesEnabled will return if chat join messages are enabled.
+func GetChatJoinMessagesEnabled() bool {
+	enabled, err := _datastore.GetBool(chatJoinMessagesEnabledKey)
+	if err != nil {
+		return true
+	}
+
+	return enabled
+}
+
+// SetNotificationsEnabled will save the enabled state of notifications.
+func SetNotificationsEnabled(enabled bool) error {
+	return _datastore.SetBool(notificationsEnabledKey, enabled)
+}
+
+// GetNotificationsEnabled will return the enabled state of notifications.
+func GetNotificationsEnabled() bool {
+	enabled, _ := _datastore.GetBool(notificationsEnabledKey)
+	return enabled
+}
+
+// GetDiscordConfig will return the Discord configuration.
+func GetDiscordConfig() models.DiscordConfiguration {
+	configEntry, err := _datastore.Get(discordConfigurationKey)
+	if err != nil {
+		return models.DiscordConfiguration{Enabled: false}
+	}
+
+	var config models.DiscordConfiguration
+	if err := configEntry.getObject(&config); err != nil {
+		return models.DiscordConfiguration{Enabled: false}
+	}
+
+	return config
+}
+
+// SetDiscordConfig will set the Discord configuration.
+func SetDiscordConfig(config models.DiscordConfiguration) error {
+	configEntry := ConfigEntry{Key: discordConfigurationKey, Value: config}
+	return _datastore.Save(configEntry)
+}
+
+// GetBrowserPushConfig will return the browser push configuration.
+func GetBrowserPushConfig() models.BrowserNotificationConfiguration {
+	configEntry, err := _datastore.Get(browserPushConfigurationKey)
+	if err != nil {
+		return models.BrowserNotificationConfiguration{Enabled: false}
+	}
+
+	var config models.BrowserNotificationConfiguration
+	if err := configEntry.getObject(&config); err != nil {
+		return models.BrowserNotificationConfiguration{Enabled: false}
+	}
+
+	return config
+}
+
+// SetBrowserPushConfig will set the browser push configuration.
+func SetBrowserPushConfig(config models.BrowserNotificationConfiguration) error {
+	configEntry := ConfigEntry{Key: browserPushConfigurationKey, Value: config}
+	return _datastore.Save(configEntry)
+}
+
+// SetBrowserPushPublicKey will set the public key for browser pushes.
+func SetBrowserPushPublicKey(key string) error {
+	return _datastore.SetString(browserPushPublicKeyKey, key)
+}
+
+// GetBrowserPushPublicKey will return the public key for browser pushes.
+func GetBrowserPushPublicKey() (string, error) {
+	return _datastore.GetString(browserPushPublicKeyKey)
+}
+
+// SetBrowserPushPrivateKey will set the private key for browser pushes.
+func SetBrowserPushPrivateKey(key string) error {
+	return _datastore.SetString(browserPushPrivateKeyKey, key)
+}
+
+// GetBrowserPushPrivateKey will return the private key for browser pushes.
+func GetBrowserPushPrivateKey() (string, error) {
+	return _datastore.GetString(browserPushPrivateKeyKey)
+}
+
+// SetTwitterConfiguration will set the Twitter configuration.
+func SetTwitterConfiguration(config models.TwitterConfiguration) error {
+	configEntry := ConfigEntry{Key: twitterConfigurationKey, Value: config}
+	return _datastore.Save(configEntry)
+}
+
+// GetTwitterConfiguration will return the Twitter configuration.
+func GetTwitterConfiguration() models.TwitterConfiguration {
+	configEntry, err := _datastore.Get(twitterConfigurationKey)
+	if err != nil {
+		return models.TwitterConfiguration{Enabled: false}
+	}
+
+	var config models.TwitterConfiguration
+	if err := configEntry.getObject(&config); err != nil {
+		return models.TwitterConfiguration{Enabled: false}
+	}
+
+	return config
+}
+
+// SetHasPerformedInitialNotificationsConfig sets when performed initial setup.
+func SetHasPerformedInitialNotificationsConfig(hasConfigured bool) error {
+	return _datastore.SetBool(hasConfiguredInitialNotificationsKey, true)
+}
+
+// GetHasPerformedInitialNotificationsConfig gets when performed initial setup.
+func GetHasPerformedInitialNotificationsConfig() bool {
+	configured, _ := _datastore.GetBool(hasConfiguredInitialNotificationsKey)
+	return configured
 }

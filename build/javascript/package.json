@@ -9,14 +9,14 @@
     "htm": "^3.1.0",
     "mark.js": "^8.11.1",
     "micromodal": "^0.4.10",
-    "preact": "10.6.4",
+    "preact": "10.6.6",
     "tailwindcss": "^1.9.6",
     "video.js": "7.17.0"
   },
   "devDependencies": {
-    "cssnano": "^5.0.14",
-    "postcss": "^8.4.5",
-    "postcss-cli": "^9.1.0"
+    "cssnano": "5.1.0",
+    "postcss": "8.4.7",
+    "postcss-cli": "9.1.0"
   },
   "snowpack": {
     "install": [
@@ -26,6 +26,7 @@
       "@joeattardi/emoji-button",
       "htm",
       "preact",
+      "preact/hooks",
       "mark.js/dist/mark.es6.min.js",
       "tailwindcss/dist/tailwind.min.css",
       "micromodal/dist/micromodal.min.js"
